@@ -65,6 +65,7 @@ interface AuthPageProps {
   onVerify: (email: string, code: string) => Promise<void>;
   onResend: (email: string) => Promise<void>;
   onRequestReset: (email: string) => Promise<string>;
+  onCheckResetCode: (email: string, code: string) => Promise<string>;
   onCompleteReset: (email: string, code: string, newPassword: string) => Promise<void>;
   onCancelVerification: () => void;
   onSwitchMode: () => void;
@@ -144,6 +145,7 @@ const AuthPage = ({
   onVerify,
   onResend,
   onRequestReset,
+  onCheckResetCode,
   onCompleteReset,
   onCancelVerification,
   onSwitchMode,
@@ -156,7 +158,7 @@ const AuthPage = ({
   const [showPassword, setShowPassword] = useState(false);
   const [code, setCode] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
-  const [forgotStage, setForgotStage] = useState<null | 'email' | 'reset'>(null);
+  const [forgotStage, setForgotStage] = useState<null | 'email' | 'code' | 'password'>(null);
   const [resetMessage, setResetMessage] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -190,7 +192,20 @@ const AuthPage = ({
     if (message) {
       setResetMessage(message);
       setCode('');
-      setForgotStage('reset');
+      setForgotStage('code');
+    }
+  };
+
+  const handleCheckResetCode = async (value?: string) => {
+    const finalCode = value ?? code;
+    if (finalCode.length !== 6) return;
+    const message = await onCheckResetCode(email, finalCode).catch(() => '');
+    if (message) {
+      setCode(finalCode);
+      setResetMessage(message);
+      setForgotStage('password');
+    } else {
+      setCode('');
     }
   };
 
@@ -204,6 +219,13 @@ const AuthPage = ({
     e?.preventDefault();
     if (code.length !== 6 || newPassword.length < 8) return;
     await onCompleteReset(email, code, newPassword).catch(() => undefined);
+  };
+
+  const handleResendResetToCode = async () => {
+    if (resendCooldown > 0) return;
+    setResendCooldown(30);
+    const message = await onRequestReset(email).catch(() => '');
+    if (message) setResetMessage(message);
   };
 
   const exitForgot = () => {
@@ -312,8 +334,10 @@ const AuthPage = ({
             <Text fontFamily={serif} fontWeight="600" fontSize={{ base: '3xl', md: '4xl' }} color={ink} lineHeight="1.1">
               {forgotStage === 'email'
                 ? 'Reset your password.'
-                : forgotStage === 'reset'
+                : forgotStage === 'code'
                 ? 'Check your email.'
+                : forgotStage === 'password'
+                ? 'Choose a new password.'
                 : isVerifying
                 ? 'Check your email.'
                 : isRegister
@@ -323,8 +347,10 @@ const AuthPage = ({
             <Text color={inkSoft} fontSize="sm">
               {forgotStage === 'email'
                 ? "Enter your account email and we'll send you a 6-digit reset code."
-                : forgotStage === 'reset'
-                ? `Enter the code we sent to ${email} and pick a new password.`
+                : forgotStage === 'code'
+                ? `Enter the 6-digit code we sent to ${email}.`
+                : forgotStage === 'password'
+                ? 'Code confirmed. Pick a strong new password for your account.'
                 : isVerifying
                 ? `Enter the 6-digit code we sent to ${pendingVerification?.email}.`
                 : isRegister
@@ -381,31 +407,78 @@ const AuthPage = ({
             </form>
           )}
 
-          {forgotStage === 'reset' && (
+          {forgotStage === 'code' && (
+            <Stack spacing={6}>
+              {resetMessage && (
+                <Alert status="info" borderRadius="xl" fontSize="sm" bg="#EAF2EE" color={ink}>
+                  <AlertIcon color={sage} />
+                  {resetMessage}
+                </Alert>
+              )}
+              <HStack justify="center" spacing={{ base: 2, md: 3 }}>
+                <PinInput
+                  otp
+                  autoFocus
+                  size="lg"
+                  value={code}
+                  onChange={setCode}
+                  onComplete={(value) => handleCheckResetCode(value)}
+                  isDisabled={loading}
+                >
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <PinInputField
+                      key={i}
+                      bg="white"
+                      border="1px solid"
+                      borderColor={line}
+                      borderRadius="xl"
+                      fontWeight="700"
+                      color={ink}
+                      _focus={{ borderColor: rose, boxShadow: `0 0 0 1px ${rose}` }}
+                    />
+                  ))}
+                </PinInput>
+              </HStack>
+              <Button
+                onClick={() => handleCheckResetCode()}
+                isLoading={loading}
+                isDisabled={code.length !== 6}
+                h="50px"
+                borderRadius="full"
+                bg={ink}
+                color={cream}
+                fontWeight="600"
+                _hover={{ bg: '#463039', transform: 'translateY(-1px)' }}
+              >
+                Verify code
+              </Button>
+              <HStack justify="center" spacing={1}>
+                <Text fontSize="sm" color={inkSoft}>
+                  Didn't get it?
+                </Text>
+                <Link
+                  fontSize="sm"
+                  fontWeight="700"
+                  color={resendCooldown > 0 ? inkSoft : rose}
+                  pointerEvents={resendCooldown > 0 ? 'none' : 'auto'}
+                  onClick={handleResendResetToCode}
+                >
+                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
+                </Link>
+              </HStack>
+              <Link fontSize="sm" color={inkSoft} textAlign="center" onClick={exitForgot}>
+                ← Back to sign in
+              </Link>
+            </Stack>
+          )}
+
+          {forgotStage === 'password' && (
             <form onSubmit={handleCompleteReset}>
               <Stack spacing={6}>
-                {resetMessage && (
-                  <Alert status="info" borderRadius="xl" fontSize="sm" bg="#EAF2EE" color={ink}>
-                    <AlertIcon color={sage} />
-                    {resetMessage}
-                  </Alert>
-                )}
-                <HStack justify="center" spacing={{ base: 2, md: 3 }}>
-                  <PinInput otp autoFocus size="lg" value={code} onChange={setCode} isDisabled={loading}>
-                    {[0, 1, 2, 3, 4, 5].map((i) => (
-                      <PinInputField
-                        key={i}
-                        bg="white"
-                        border="1px solid"
-                        borderColor={line}
-                        borderRadius="xl"
-                        fontWeight="700"
-                        color={ink}
-                        _focus={{ borderColor: rose, boxShadow: `0 0 0 1px ${rose}` }}
-                      />
-                    ))}
-                  </PinInput>
-                </HStack>
+                <Alert status="success" borderRadius="xl" fontSize="sm" bg="#EAF2EE" color={ink}>
+                  <AlertIcon color={sage} />
+                  {resetMessage || 'Code verified — choose your new password.'}
+                </Alert>
                 <FormControl isRequired>
                   <FormLabel fontSize="sm" fontWeight="600" color={ink}>
                     New password
@@ -423,6 +496,7 @@ const AuthPage = ({
                       h="48px"
                       _focus={{ borderColor: rose, boxShadow: `0 0 0 1px ${rose}` }}
                       autoComplete="new-password"
+                      autoFocus
                     />
                     <InputRightElement h="48px">
                       <Button
@@ -441,7 +515,7 @@ const AuthPage = ({
                 <Button
                   type="submit"
                   isLoading={loading}
-                  isDisabled={code.length !== 6 || newPassword.length < 8}
+                  isDisabled={newPassword.length < 8}
                   h="50px"
                   borderRadius="full"
                   bg={ink}
@@ -451,20 +525,6 @@ const AuthPage = ({
                 >
                   Reset password & sign in
                 </Button>
-                <HStack justify="center" spacing={1}>
-                  <Text fontSize="sm" color={inkSoft}>
-                    Didn't get it?
-                  </Text>
-                  <Link
-                    fontSize="sm"
-                    fontWeight="700"
-                    color={resendCooldown > 0 ? inkSoft : rose}
-                    pointerEvents={resendCooldown > 0 ? 'none' : 'auto'}
-                    onClick={handleResendReset}
-                  >
-                    {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
-                  </Link>
-                </HStack>
                 <Link fontSize="sm" color={inkSoft} textAlign="center" onClick={exitForgot}>
                   ← Back to sign in
                 </Link>
@@ -657,7 +717,7 @@ const AuthPage = ({
 
           <HStack justify="center" mt={10} spacing={2} color={inkSoft} fontSize="xs">
             <Circle size="6px" bg={sage} />
-            <Text>Private by default — we never share your data.</Text>
+            <Text>Private by default we never share your data.</Text>
           </HStack>
         </Box>
       </Flex>

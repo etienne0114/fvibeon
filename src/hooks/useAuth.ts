@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { register, login, verifyEmail, resendCode, googleLogin, forgotPassword, resetPassword } from '../api/auth';
+import { register, login, verifyEmail, resendCode, googleLogin, forgotPassword, verifyResetCode, resetPassword } from '../api/auth';
 import { setAuthToken } from '../api/client';
 
 const TOKEN_KEY = 'learn_auth_token';
@@ -11,8 +11,14 @@ export interface PendingVerification {
   message: string;
 }
 
-const extractError = (err: any) =>
-  err?.response?.data?.error || err?.message || 'Authentication failed';
+// Only surface messages our API deliberately wrote — never axios/status internals
+const extractError = (err: any) => {
+  const message = err?.response?.data?.error;
+  if (typeof message === 'string' && message.trim()) {
+    return message;
+  }
+  return 'Something went wrong. Please check your connection and try again.';
+};
 
 export function useAuth() {
   const getInitialToken = () => {
@@ -120,6 +126,20 @@ export function useAuth() {
     }
   }, []);
 
+  const checkResetCode = useCallback(async (email: string, code: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await verifyResetCode({ email, code });
+      return response.message;
+    } catch (err: any) {
+      setError(extractError(err));
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   const completeReset = useCallback(async (email: string, code: string, newPassword: string) => {
     try {
       setIsLoading(true);
@@ -153,6 +173,7 @@ export function useAuth() {
     verify,
     resend,
     requestReset,
+    checkResetCode,
     completeReset,
     cancelVerification,
     loginWithGoogle,

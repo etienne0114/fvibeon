@@ -46,3 +46,8 @@ export async function resetPassword(payload: { email: string; code: string; newP
   const response = await client.post('/auth/reset-password', payload);
   return response.data as { success: boolean } & AuthResponse;
 }
+
+export async function verifyResetCode(payload: { email: string; code: string }) {
+  const response = await client.post('/auth/verify-reset-code', payload);
+  return response.data as { success: boolean; message: string };
+}

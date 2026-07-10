@@ -17,6 +17,7 @@ const App = () => {
     verify,
     resend,
     requestReset,
+    checkResetCode,
     completeReset,
     cancelVerification,
     pendingVerification,
@@ -51,6 +52,7 @@ const App = () => {
         onVerify={verify}
         onResend={resend}
         onRequestReset={requestReset}
+        onCheckResetCode={checkResetCode}
         onCompleteReset={completeReset}
         onCancelVerification={cancelVerification}
         onSwitchMode={handleModeToggle}

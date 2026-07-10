@@ -10,17 +10,17 @@ const client = axios.create({
   },
 });
 
-// Response interceptor for handling 401s
+// Force logout only when an authenticated session goes stale.
+// Auth endpoints return 401 for wrong credentials/codes — those must reach
+// the form so the user sees the message, not a page reload.
 client.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Clear token and force logout if unauthorized
+    const isAuthEndpoint = String(error.config?.url || '').includes('/auth/');
+    const hadSession = typeof window !== 'undefined' && Boolean(localStorage.getItem(TOKEN_KEY));
+    if (error.response?.status === 401 && !isAuthEndpoint && hadSession) {
       localStorage.removeItem(TOKEN_KEY);
-      // Small delay to allow any other logic to settle, then redirect/reload
-      if (typeof window !== 'undefined') {
-        window.location.href = '/';
-      }
+      window.location.href = '/';
     }
     return Promise.reject(error);
   }
