@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
-import { register, login, googleLogin } from '../api/auth';
+import { register, login, verifyEmail, resendCode, googleLogin } from '../api/auth';
 import { setAuthToken } from '../api/client';
-
-const extractError = (err: any) =>
-  err?.response?.data?.error || err?.message || 'Authentication failed';
 
 const TOKEN_KEY = 'learn_auth_token';
 
 export type AuthMode = 'login' | 'register';
+
+export interface PendingVerification {
+  email: string;
+  message: string;
+}
+
+const extractError = (err: any) =>
+  err?.response?.data?.error || err?.message || 'Authentication failed';
 
 export function useAuth() {
   const getInitialToken = () => {
@@ -20,6 +25,7 @@ export function useAuth() {
   setAuthToken(token);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingVerification, setPendingVerification] = useState<PendingVerification | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -36,10 +42,21 @@ export function useAuth() {
     async (payload: { email: string; password: string; username?: string }, mode: AuthMode) => {
       try {
         setIsLoading(true);
-        const response = mode === 'register' ? await register(payload as any) : await login(payload as any);
-        setToken(response.token);
         setError(null);
+        if (mode === 'register') {
+          const response = await register(payload as { username: string; email: string; password: string });
+          setPendingVerification({ email: response.email, message: response.message });
+          return;
+        }
+        const response = await login(payload);
+        setToken(response.token);
+        setPendingVerification(null);
       } catch (err: any) {
+        if (err?.response?.data?.requiresVerification) {
+          // Unverified account: backend just emailed a fresh code
+          setPendingVerification({ email: payload.email, message: extractError(err) });
+          return;
+        }
         setError(extractError(err));
         throw err;
       } finally {
@@ -49,12 +66,13 @@ export function useAuth() {
     [],
   );
 
-  const loginWithGoogle = useCallback(async (credential: string) => {
+  const verify = useCallback(async (email: string, code: string) => {
     try {
       setIsLoading(true);
-      const response = await googleLogin(credential);
-      setToken(response.token);
       setError(null);
+      const response = await verifyEmail({ email, code });
+      setToken(response.token);
+      setPendingVerification(null);
     } catch (err: any) {
       setError(extractError(err));
       throw err;
@@ -63,9 +81,50 @@ export function useAuth() {
     }
   }, []);
 
+  const resend = useCallback(async (email: string) => {
+    try {
+      setError(null);
+      const response = await resendCode({ email });
+      setPendingVerification((prev) => (prev ? { ...prev, message: response.message } : prev));
+    } catch (err: any) {
+      setError(extractError(err));
+    }
+  }, []);
+
+  const loginWithGoogle = useCallback(async (credential: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await googleLogin(credential);
+      setToken(response.token);
+      setPendingVerification(null);
+    } catch (err: any) {
+      setError(extractError(err));
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const cancelVerification = useCallback(() => {
+    setPendingVerification(null);
+    setError(null);
+  }, []);
+
   const logout = useCallback(() => {
     setToken(null);
   }, []);
 
-  return { token, isLoading, error, authenticate, loginWithGoogle, logout };
+  return {
+    token,
+    isLoading,
+    error,
+    pendingVerification,
+    authenticate,
+    verify,
+    resend,
+    cancelVerification,
+    loginWithGoogle,
+    logout,
+  };
 }

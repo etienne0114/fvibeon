@@ -11,7 +11,18 @@ const App = () => {
   const [showAuth, setShowAuth] = useState(
     () => typeof window !== 'undefined' && window.location.hash === '#auth',
   );
-  const { token, authenticate, loginWithGoogle, isLoading, error, logout } = useAuth();
+  const {
+    token,
+    authenticate,
+    verify,
+    resend,
+    cancelVerification,
+    pendingVerification,
+    loginWithGoogle,
+    isLoading,
+    error,
+    logout,
+  } = useAuth();
 
   const handleSubmit = async (payload: { email: string; password: string; username?: string }) => {
     try {
@@ -33,7 +44,11 @@ const App = () => {
         mode={mode}
         loading={isLoading}
         error={error}
+        pendingVerification={pendingVerification}
         onSubmit={handleSubmit}
+        onVerify={verify}
+        onResend={resend}
+        onCancelVerification={cancelVerification}
         onSwitchMode={handleModeToggle}
         onGoogleCredential={loginWithGoogle}
         onBack={() => setShowAuth(false)}

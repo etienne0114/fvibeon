@@ -218,7 +218,7 @@ const LegendDot = ({ color, label }: { color: string; label: string }) => (
 
 const PhoneMockup = () => (
   <Box
-    w={{ base: '290px', md: '340px' }}
+    w={{ base: '300px', md: '350px' }}
     mx="auto"
     bg="white"
     border="10px solid"
@@ -227,9 +227,9 @@ const PhoneMockup = () => (
     boxShadow="0 32px 64px rgba(46,31,38,0.18)"
     overflow="hidden"
   >
-    <Box p={4} bg="#FFFDFa">
+    <Box p={5} pb={6} bg="#FFFDFa">
       {/* Header */}
-      <HStack spacing={3} mb={4}>
+      <HStack spacing={3} mb={5}>
         <Circle size="36px" bg={rose} color="white" fontWeight="700" fontSize="sm">
           E
         </Circle>
@@ -250,7 +250,7 @@ const PhoneMockup = () => (
       </HStack>
 
       {/* Continue learning */}
-      <Box bg={roseDeep} borderRadius="2xl" p={4} mb={3} color="white">
+      <Box bg={roseDeep} borderRadius="2xl" p={5} mb={4} color="white">
         <Text fontSize="10px" fontWeight="700" letterSpacing="0.12em" opacity={0.85}>
           CONTINUE LEARNING
         </Text>
@@ -263,7 +263,7 @@ const PhoneMockup = () => (
       </Box>
 
       {/* Drill: user's sentence */}
-      <Box bg="#FBE3E9" borderRadius="xl" borderBottomRightRadius="4px" p={3} mb={2} ml={8}>
+      <Box bg="#FBE3E9" borderRadius="xl" borderBottomRightRadius="4px" p={4} mb={3} ml={8}>
         <Text fontSize="9px" fontWeight="700" color={roseDeep} letterSpacing="0.1em" mb={1}>
           YOU WROTE
         </Text>
@@ -275,7 +275,7 @@ const PhoneMockup = () => (
       </Box>
 
       {/* Drill: tutor feedback with highlights */}
-      <Box bg="#EAF2EE" borderRadius="xl" borderTopLeftRadius="4px" p={3} mb={2} mr={8}>
+      <Box bg="#EAF2EE" borderRadius="xl" borderTopLeftRadius="4px" p={4} mb={3} mr={8}>
         <Text fontSize="9px" fontWeight="700" color="#4E7A6A" letterSpacing="0.1em" mb={1}>
           TUTOR · 2 FIXES, 1 TYPO
         </Text>
@@ -290,15 +290,15 @@ const PhoneMockup = () => (
       </Box>
 
       {/* Legend */}
-      <HStack justify="flex-start" pl={1} spacing={3} mb={3} py={1}>
+      <HStack justify="flex-start" pl={1} spacing={3} mb={4} py={1}>
         <LegendDot color="#3E7A5E" label="Corrected" />
         <LegendDot color="#D9A544" label="Misspelled" />
         <LegendDot color="#B93B55" label="Incorrect" />
       </HStack>
 
       {/* Score */}
-      <HStack bg={card} borderRadius="xl" p={3} spacing={3}>
-        <Circle size="34px" bg={amber} color="white">
+      <HStack bg={card} borderRadius="xl" p={4} spacing={3}>
+        <Circle size="38px" bg={amber} color="white">
           <Icon as={FiZap} boxSize={4} />
         </Circle>
         <Box flex={1}>
@@ -371,22 +371,6 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
       <Container maxW="7xl" pt={{ base: 8, md: 14 }} pb={{ base: 14, md: 24 }}>
         <Grid templateColumns={{ base: '1fr', lg: '1.1fr 1fr' }} gap={{ base: 14, lg: 8 }} alignItems="center">
           <Stack spacing={7} maxW="640px">
-            <HStack
-              bg="white"
-              border="1px solid"
-              borderColor={line}
-              borderRadius="full"
-              px={4}
-              py={2}
-              w="fit-content"
-              spacing={2}
-            >
-              <Circle size="8px" bg="#3BA55D" />
-              <Text fontSize="sm" fontWeight="500" color={ink}>
-                Now live for learners in Rwanda
-              </Text>
-            </HStack>
-
             <Text
               as="h1"
               fontFamily={serif}
@@ -436,7 +420,7 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
               </HStack>
               <HStack spacing={2}>
                 <Icon as={FiGlobe} color={sage} />
-                <Text>RW · EN · FR</Text>
+                <Text>10+ languages</Text>
               </HStack>
             </Stack>
           </Stack>
@@ -455,7 +439,7 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
               icon={FiGlobe}
               tile={rose}
               title="Instant translator"
-              sub="Kinyarwanda · English · French"
+              sub="10+ languages · vibeon_translator"
               bottom="3%"
               right="-4%"
             />
@@ -477,7 +461,7 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
           <SimpleGrid columns={{ base: 2, md: 4 }} spacing={{ base: 8, md: 4 }}>
             {[
               { big: '6', label: 'Practice modes' },
-              { big: '3', label: 'Languages supported' },
+              { big: '10+', label: 'Languages supported' },
               { big: '24/7', label: 'AI tutor, always on' },
               { big: '100%', label: 'Free to learn' },
             ].map((s) => (
@@ -516,7 +500,7 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
             icon={FiGlobe}
             tile={sage}
             title="Instant translator"
-            body="Translate text, documents, images, and even live speech between Kinyarwanda, English, and French — powered by vibeon_translator."
+            body="Translate text, documents, images, and even live speech across 10+ languages — powered by vibeon_translator, built in-house."
           />
           <FeatureCard
             icon={FiTarget}
@@ -569,7 +553,7 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
                       Tutor chat
                     </Text>
                     <Text fontSize="xs" color={inkSoft}>
-                      Kinyarwanda practice · AI tutor
+                      Language practice · AI tutor
                     </Text>
                   </Box>
                 </HStack>
@@ -670,7 +654,7 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
             </Box>
           </Text>
           <Text color={inkSoft} fontSize={{ base: 'md', md: 'lg' }} maxW="520px" mx="auto" mb={10} lineHeight="1.8">
-            Join learners across Rwanda building real language skills — privately, confidently, and
+            Join thousands of learners building real language skills — privately, confidently, and
             for free.
           </Text>
           <Stack direction={{ base: 'column', sm: 'row' }} spacing={4} justify="center">
@@ -693,8 +677,8 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
                 Vibeon Learn
               </Text>
               <Text fontSize="sm" lineHeight="1.7">
-                Interactive, AI-powered language learning for Kinyarwanda, English, and French —
-                built for learners in Rwanda.
+                Interactive, AI-powered language learning in 10+ languages — with an AI tutor,
+                instant translation, and daily practice drills.
               </Text>
             </Stack>
             {[
@@ -738,8 +722,8 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
             gap={3}
             fontSize="sm"
           >
-            <Text>© 2026 Vibeon Learn · Built for learners in Rwanda</Text>
-            <Text>Kinyarwanda · English · Français</Text>
+            <Text>© 2026 Vibeon Learn · All rights reserved</Text>
+            <Text>Learn in 10+ languages</Text>
           </Flex>
         </Container>
       </Box>

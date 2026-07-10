@@ -16,6 +16,8 @@ import {
   InputGroup,
   InputRightElement,
   Link,
+  PinInput,
+  PinInputField,
   Stack,
   Text,
 } from '@chakra-ui/react';
@@ -49,11 +51,20 @@ declare global {
   }
 }
 
+export interface PendingVerification {
+  email: string;
+  message: string;
+}
+
 interface AuthPageProps {
   mode: AuthMode;
   loading?: boolean;
   error?: string | null;
+  pendingVerification?: PendingVerification | null;
   onSubmit: (payload: { email: string; password: string; username?: string }) => Promise<void>;
+  onVerify: (email: string, code: string) => Promise<void>;
+  onResend: (email: string) => Promise<void>;
+  onCancelVerification: () => void;
   onSwitchMode: () => void;
   onGoogleCredential: (credential: string) => Promise<void>;
   onBack: () => void;
@@ -61,7 +72,7 @@ interface AuthPageProps {
 
 const perks = [
   { icon: FiMessageCircle, tile: rose, title: 'AI tutor, 24/7', body: 'Corrections that explain the why.' },
-  { icon: FiGlobe, tile: sage, title: 'Instant translator', body: 'Kinyarwanda, English & French.' },
+  { icon: FiGlobe, tile: sage, title: 'Instant translator', body: '10+ languages, powered by vibeon_translator.' },
   { icon: FiTarget, tile: amber, title: 'Daily drills', body: 'Vocabulary, quizzes and roleplay.' },
 ];
 
@@ -122,13 +133,46 @@ const GoogleButton = ({ onCredential }: { onCredential: (credential: string) => 
   return <Flex ref={slotRef} justify="center" minH="46px" />;
 };
 
-const AuthPage = ({ mode, loading = false, error = null, onSubmit, onSwitchMode, onGoogleCredential, onBack }: AuthPageProps) => {
+const AuthPage = ({
+  mode,
+  loading = false,
+  error = null,
+  pendingVerification = null,
+  onSubmit,
+  onVerify,
+  onResend,
+  onCancelVerification,
+  onSwitchMode,
+  onGoogleCredential,
+  onBack,
+}: AuthPageProps) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [code, setCode] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const isRegister = mode === 'register';
+  const isVerifying = Boolean(pendingVerification);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  const handleVerify = async (value?: string) => {
+    const finalCode = value ?? code;
+    if (!pendingVerification || finalCode.length !== 6) return;
+    await onVerify(pendingVerification.email, finalCode).catch(() => setCode(''));
+  };
+
+  const handleResend = async () => {
+    if (!pendingVerification || resendCooldown > 0) return;
+    setResendCooldown(30);
+    await onResend(pendingVerification.email);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -202,7 +246,7 @@ const AuthPage = ({ mode, loading = false, error = null, onSubmit, onSwitchMode,
         </Stack>
 
         <Text fontSize="sm" color="#B9A49A" zIndex={1}>
-          Kinyarwanda · English · Français
+          Learn in 10+ languages · Anywhere
         </Text>
       </Flex>
 
@@ -227,10 +271,12 @@ const AuthPage = ({ mode, loading = false, error = null, onSubmit, onSwitchMode,
 
           <Stack spacing={2} mb={8}>
             <Text fontFamily={serif} fontWeight="600" fontSize={{ base: '3xl', md: '4xl' }} color={ink} lineHeight="1.1">
-              {isRegister ? 'Create your account.' : 'Welcome back.'}
+              {isVerifying ? 'Check your email.' : isRegister ? 'Create your account.' : 'Welcome back.'}
             </Text>
             <Text color={inkSoft} fontSize="sm">
-              {isRegister
+              {isVerifying
+                ? `Enter the 6-digit code we sent to ${pendingVerification?.email}.`
+                : isRegister
                 ? 'Free forever. Your tutor is ready when you are.'
                 : 'Pick up right where you left off — your streak misses you.'}
             </Text>
@@ -243,6 +289,71 @@ const AuthPage = ({ mode, loading = false, error = null, onSubmit, onSwitchMode,
             </Alert>
           )}
 
+          {isVerifying && pendingVerification && (
+            <Stack spacing={6}>
+              <Alert status="info" borderRadius="xl" fontSize="sm" bg="#EAF2EE" color={ink}>
+                <AlertIcon color={sage} />
+                {pendingVerification.message}
+              </Alert>
+              <HStack justify="center" spacing={{ base: 2, md: 3 }}>
+                <PinInput
+                  otp
+                  autoFocus
+                  size="lg"
+                  value={code}
+                  onChange={setCode}
+                  onComplete={(value) => handleVerify(value)}
+                  isDisabled={loading}
+                >
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <PinInputField
+                      key={i}
+                      bg="white"
+                      border="1px solid"
+                      borderColor={line}
+                      borderRadius="xl"
+                      fontWeight="700"
+                      color={ink}
+                      _focus={{ borderColor: rose, boxShadow: `0 0 0 1px ${rose}` }}
+                    />
+                  ))}
+                </PinInput>
+              </HStack>
+              <Button
+                onClick={() => handleVerify()}
+                isLoading={loading}
+                isDisabled={code.length !== 6}
+                h="50px"
+                borderRadius="full"
+                bg={ink}
+                color={cream}
+                fontWeight="600"
+                _hover={{ bg: '#463039', transform: 'translateY(-1px)' }}
+              >
+                Verify & start learning
+              </Button>
+              <HStack justify="center" spacing={1}>
+                <Text fontSize="sm" color={inkSoft}>
+                  Didn't get it?
+                </Text>
+                <Link
+                  fontSize="sm"
+                  fontWeight="700"
+                  color={resendCooldown > 0 ? inkSoft : rose}
+                  pointerEvents={resendCooldown > 0 ? 'none' : 'auto'}
+                  onClick={handleResend}
+                >
+                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
+                </Link>
+              </HStack>
+              <Link fontSize="sm" color={inkSoft} textAlign="center" onClick={onCancelVerification}>
+                ← Use a different account
+              </Link>
+            </Stack>
+          )}
+
+          {!isVerifying && (
+          <>
           <form onSubmit={handleSubmit}>
             <Stack spacing={5}>
               {isRegister && (
@@ -291,7 +402,7 @@ const AuthPage = ({ mode, loading = false, error = null, onSubmit, onSwitchMode,
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder={isRegister ? 'At least 6 characters' : 'Your password'}
+                    placeholder={isRegister ? 'At least 8 characters' : 'Your password'}
                     bg="white"
                     border="1px solid"
                     borderColor={line}
@@ -342,6 +453,8 @@ const AuthPage = ({ mode, loading = false, error = null, onSubmit, onSwitchMode,
               {isRegister ? 'Sign in' : 'Create an account'}
             </Link>
           </HStack>
+          </>
+          )}
 
           <HStack justify="center" mt={10} spacing={2} color={inkSoft} fontSize="xs">
             <Circle size="6px" bg={sage} />
