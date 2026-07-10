@@ -23,6 +23,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@types/dom-speech-recognition": "^0.0.12",
     "@types/react": "^18.2.35",
     "@types/react-dom": "^18.2.11",
     "@vitejs/plugin-react": "^4.0.0",

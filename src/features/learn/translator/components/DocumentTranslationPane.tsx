@@ -182,11 +182,10 @@ const DocumentTranslationPane = ({ onTranslate, isLoading, result, onClear }: Do
             <Box
               p={4}
               bg={isLoading ? undefined : 'purple.50'}
-              _dark={{ bg: 'purple.900' }}
+              _dark={{ bg: 'purple.900', borderColor: 'purple.700' }}
               borderRadius="md"
               borderWidth={1}
               borderColor={isLoading ? borderColor : 'purple.200'}
-              _dark_border={{ borderColor: 'purple.700' }}
               minH="280px"
               maxH="340px"
               overflowY="auto"
