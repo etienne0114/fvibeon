@@ -2,11 +2,13 @@ import { Stack } from '@chakra-ui/react';
 import { useState } from 'react';
 import AppShell from './components/layout/AppShell';
 import AuthPanel, { AuthMode } from './components/layout/AuthPanel';
+import LandingPage from './features/landing/LandingPage';
 import LearnHome from './features/learn/home/LearnHome';
 import { useAuth } from './hooks';
 
 const App = () => {
   const [mode, setMode] = useState<AuthMode>('login');
+  const [showAuth, setShowAuth] = useState(false);
   const { token, authenticate, isLoading, error, logout } = useAuth();
 
   const handleSubmit = async (payload: { email: string; password: string; username?: string }) => {
@@ -18,6 +20,10 @@ const App = () => {
   };
 
   const handleModeToggle = () => setMode((prev) => (prev === 'login' ? 'register' : 'login'));
+
+  if (!token && !showAuth) {
+    return <LandingPage onOpenApp={() => setShowAuth(true)} />;
+  }
 
   return (
     <AppShell>
