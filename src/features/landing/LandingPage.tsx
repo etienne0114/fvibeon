@@ -70,7 +70,7 @@ const PillButton = ({
 }) => (
   <Button
     onClick={onClick}
-    borderRadius="full"
+    borderRadius="xl"
     px={size === 'lg' ? 7 : 5}
     h={size === 'lg' ? '52px' : '40px'}
     fontSize={size === 'lg' ? 'md' : 'sm'}
@@ -218,30 +218,43 @@ const LegendDot = ({ color, label }: { color: string; label: string }) => (
 
 const PhoneMockup = () => (
   <Box
-    w={{ base: '310px', md: '385px' }}
+    w="full"
+    maxW={{ base: '340px', md: '385px' }}
+    // Real-phone proportions on desktop (~2:1); content spreads to fill
+    minH={{ lg: '740px' }}
+    display="flex"
+    flexDirection="column"
     mx="auto"
     bg="white"
-    border="10px solid"
+    border={{ base: '8px solid', md: '10px solid' }}
     borderColor={ink}
-    borderRadius="42px"
+    borderRadius={{ base: '34px', md: '42px' }}
     boxShadow="0 32px 64px rgba(46,31,38,0.18)"
     overflow="hidden"
   >
-    <Box p={5} pb={6} bg="#FFFDFa">
+    <Box
+      p={{ base: 4, md: 5 }}
+      pb={{ base: 5, md: 6 }}
+      bg="#FFFDFa"
+      flex={1}
+      display="flex"
+      flexDirection="column"
+      justifyContent="space-between"
+    >
       {/* Header */}
       <HStack spacing={3} mb={5}>
-        <Circle size="40px" bg={rose} color="white" fontWeight="700" fontSize="md">
+        <Circle size="40px" bg={rose} color="white" fontWeight="700" fontSize="md" flexShrink={0}>
           E
         </Circle>
-        <Box flex={1}>
-          <Text fontSize="md" fontWeight="700" color={ink}>
+        <Box flex={1} minW={0}>
+          <Text fontSize="md" fontWeight="700" color={ink} noOfLines={1}>
             Muraho, Etienne 👋
           </Text>
-          <Text fontSize="sm" color={inkSoft}>
+          <Text fontSize="sm" color={inkSoft} noOfLines={1}>
             Grammar drill · English
           </Text>
         </Box>
-        <HStack bg="#EAF2EE" borderRadius="full" px={2.5} py={1} spacing={1}>
+        <HStack bg="#EAF2EE" borderRadius="full" px={2.5} py={1} spacing={1} flexShrink={0}>
           <Text fontSize="xs">🔥</Text>
           <Text fontSize="xs" fontWeight="700" color={ink}>
             4
@@ -263,7 +276,7 @@ const PhoneMockup = () => (
       </Box>
 
       {/* Drill: user's sentence */}
-      <Box bg="#FBE3E9" borderRadius="xl" borderBottomRightRadius="4px" p={4} mb={3} ml={8}>
+      <Box bg="#FBE3E9" borderRadius="xl" borderBottomRightRadius="4px" p={4} mb={3} ml={{ base: 5, md: 8 }}>
         <Text fontSize="10px" fontWeight="700" color={roseDeep} letterSpacing="0.1em" mb={1}>
           YOU WROTE
         </Text>
@@ -275,7 +288,7 @@ const PhoneMockup = () => (
       </Box>
 
       {/* Drill: tutor feedback with highlights */}
-      <Box bg="#EAF2EE" borderRadius="xl" borderTopLeftRadius="4px" p={4} mb={3} mr={8}>
+      <Box bg="#EAF2EE" borderRadius="xl" borderTopLeftRadius="4px" p={4} mb={3} mr={{ base: 5, md: 8 }}>
         <Text fontSize="10px" fontWeight="700" color="#4E7A6A" letterSpacing="0.1em" mb={1}>
           TUTOR · 2 FIXES, 1 TYPO
         </Text>
@@ -290,26 +303,26 @@ const PhoneMockup = () => (
       </Box>
 
       {/* Legend */}
-      <HStack justify="flex-start" pl={1} spacing={3} mb={4} py={1}>
+      <HStack justify="flex-start" pl={1} spacing={3} mb={4} py={1} flexWrap="wrap">
         <LegendDot color="#3E7A5E" label="Corrected" />
         <LegendDot color="#D9A544" label="Misspelled" />
         <LegendDot color="#B93B55" label="Incorrect" />
       </HStack>
 
       {/* Score */}
-      <HStack bg={card} borderRadius="xl" p={4} spacing={3}>
-        <Circle size="38px" bg={amber} color="white">
+      <HStack bg={card} borderRadius="xl" p={{ base: 3, md: 4 }} spacing={{ base: 2, md: 3 }}>
+        <Circle size={{ base: '32px', md: '38px' }} bg={amber} color="white" flexShrink={0}>
           <Icon as={FiZap} boxSize={4} />
         </Circle>
-        <Box flex={1}>
+        <Box flex={1} minW={0}>
           <Text fontSize="10px" fontWeight="700" color="#B4823D" letterSpacing="0.1em">
             DRILL SCORE
           </Text>
-          <Text fontSize="md" fontWeight="600" color={ink}>
+          <Text fontSize="sm" fontWeight="600" color={ink} noOfLines={1}>
             8/10 · +12 XP earned
           </Text>
         </Box>
-        <Text fontSize="sm" fontWeight="700" color={sage}>
+        <Text fontSize={{ base: 'xs', md: 'sm' }} fontWeight="700" color={sage} flexShrink={0} whiteSpace="nowrap">
           Next drill →
         </Text>
       </HStack>
@@ -330,7 +343,7 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
   );
 
   return (
-    <Box bg={cream} minH="100vh" fontFamily='"Inter", system-ui, sans-serif' overflowX="clip">
+    <Box bg={cream} minH="100dvh" fontFamily='"Inter", system-ui, sans-serif' overflowX="clip">
       {/* ============ NAV (fixed while scrolling) ============ */}
       <Box
         position="sticky"
@@ -343,7 +356,7 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
       >
       <Container maxW="7xl" py={4}>
         <Flex align="center" justify="space-between">
-          <Text fontFamily={serif} fontWeight="700" fontSize="2xl" color={ink}>
+          <Text fontFamily={serif} fontWeight="700" fontSize={{ base: 'xl', md: '2xl' }} color={ink}>
             Vibeon Learn
           </Text>
           <HStack spacing={8} display={{ base: 'none', md: 'flex' }}>
@@ -378,8 +391,22 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
       </Box>
 
       {/* ============ HERO ============ */}
-      <Container maxW="7xl" pt={{ base: 8, md: 14 }} pb={{ base: 14, md: 24 }}>
-        <Grid templateColumns={{ base: '1fr', lg: '1.1fr 1fr' }} gap={{ base: 14, lg: 8 }} alignItems="center">
+      {/* On desktop the hero fills the first viewport exactly, so the phone
+          mockup and its floating cards are always fully visible above the fold */}
+      <Container
+        maxW="7xl"
+        pt={{ base: 8, md: 14, lg: 4 }}
+        pb={{ base: 14, md: 24, lg: 8 }}
+        display={{ base: 'block', lg: 'flex' }}
+        alignItems={{ lg: 'center' }}
+        minH={{ lg: 'calc(100dvh - 74px)' }}
+      >
+        <Grid
+          templateColumns={{ base: 'minmax(0, 1fr)', lg: 'minmax(0, 1.1fr) minmax(0, 1fr)' }}
+          gap={{ base: 14, lg: 8 }}
+          alignItems="center"
+          w="full"
+        >
           <Stack spacing={7} maxW="640px">
             <Text
               as="h1"
@@ -435,14 +462,23 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
             </Stack>
           </Stack>
 
-          <Box position="relative" py={{ base: 0, lg: 10 }}>
+          <Box
+            position="relative"
+            py={{ base: 0, lg: 6 }}
+            // Typical laptop screens: shrink the whole phone block so it always
+            // fits above the fold with breathing room instead of getting cut
+            sx={{
+              '@media (min-width: 62em) and (max-height: 940px)': { zoom: 0.88 },
+              '@media (min-width: 62em) and (max-height: 780px)': { zoom: 0.78 },
+            }}
+          >
             <PhoneMockup />
             <FloatingCard
               icon={FiMessageCircle}
               tile={sage}
               title="Live corrections"
               sub="As you write & speak"
-              top="6%"
+              top="2%"
               left="-4%"
             />
             <FloatingCard
@@ -450,7 +486,7 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
               tile={rose}
               title="Instant translator"
               sub="10+ languages · vibeon_translator"
-              bottom="3%"
+              bottom="2%"
               right="-4%"
             />
             <FloatingCard
@@ -458,7 +494,7 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
               tile={amber}
               title="86% accuracy"
               sub="Quiz streak"
-              bottom="2%"
+              bottom="0%"
               left="0%"
             />
           </Box>
@@ -542,7 +578,11 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
       {/* ============ TUTOR / COMMUNITY ============ */}
       <Box bg={creamDeep} borderY="1px solid" borderColor={line} id="tutor">
         <Container maxW="7xl" py={{ base: 16, md: 24 }}>
-          <Grid templateColumns={{ base: '1fr', lg: '1fr 1fr' }} gap={{ base: 12, lg: 16 }} alignItems="center">
+          <Grid
+            templateColumns={{ base: 'minmax(0, 1fr)', lg: 'repeat(2, minmax(0, 1fr))' }}
+            gap={{ base: 12, lg: 16 }}
+            alignItems="center"
+          >
             {/* Chat mockup */}
             <Box
               bg="white"
@@ -681,7 +721,7 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
       {/* ============ FOOTER ============ */}
       <Box bg={ink} color="#D8C7BC">
         <Container maxW="7xl" py={{ base: 12, md: 16 }}>
-          <Grid templateColumns={{ base: '1fr', md: '1.4fr 1fr 1fr 1fr' }} gap={{ base: 10, md: 8 }}>
+          <Grid templateColumns={{ base: '1fr', sm: 'repeat(2, 1fr)', md: '1.4fr 1fr 1fr 1fr' }} gap={{ base: 10, md: 8 }}>
             <Stack spacing={4} maxW="280px">
               <Text fontFamily={serif} fontWeight="700" fontSize="xl" color="white">
                 Vibeon Learn

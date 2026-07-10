@@ -1,5 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
-import { register, login, verifyEmail, resendCode, googleLogin, forgotPassword, verifyResetCode, resetPassword } from '../api/auth';
+import {
+  register,
+  registerStart,
+  registerCheckCode,
+  registerComplete,
+  updateProfile,
+  login,
+  verifyEmail,
+  resendCode,
+  googleLogin,
+  forgotPassword,
+  verifyResetCode,
+  resetPassword,
+  type ProfilePayload,
+} from '../api/auth';
 import { setAuthToken } from '../api/client';
 
 const TOKEN_KEY = 'learn_auth_token';
@@ -71,6 +85,73 @@ export function useAuth() {
     },
     [],
   );
+
+  // --- Staged sign-up: identity → code → password → optional profile ---
+  const startRegistration = useCallback(
+    async (payload: { username: string; email: string; firstName?: string; lastName?: string }) => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const response = await registerStart(payload);
+        return response.message;
+      } catch (err: any) {
+        setError(extractError(err));
+        throw err;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [],
+  );
+
+  const checkRegistrationCode = useCallback(async (email: string, code: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await registerCheckCode({ email, code });
+      return response.message;
+    } catch (err: any) {
+      setError(extractError(err));
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Returns the token WITHOUT committing it, so the onboarding profile step
+  // can still render before the app switches to the authenticated shell.
+  const completeRegistration = useCallback(async (email: string, code: string, password: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await registerComplete({ email, code, password });
+      return response.token;
+    } catch (err: any) {
+      setError(extractError(err));
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const saveProfile = useCallback(async (payload: ProfilePayload, pendingToken: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      await updateProfile(payload, pendingToken);
+    } catch (err: any) {
+      setError(extractError(err));
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const finishRegistration = useCallback((pendingToken: string) => {
+    setToken(pendingToken);
+    setPendingVerification(null);
+    setError(null);
+  }, []);
 
   const verify = useCallback(async (email: string, code: string) => {
     try {
@@ -170,6 +251,11 @@ export function useAuth() {
     error,
     pendingVerification,
     authenticate,
+    startRegistration,
+    checkRegistrationCode,
+    completeRegistration,
+    saveProfile,
+    finishRegistration,
     verify,
     resend,
     requestReset,

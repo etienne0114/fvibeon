@@ -14,6 +14,11 @@ const App = () => {
   const {
     token,
     authenticate,
+    startRegistration,
+    checkRegistrationCode,
+    completeRegistration,
+    saveProfile,
+    finishRegistration,
     verify,
     resend,
     requestReset,
@@ -27,9 +32,9 @@ const App = () => {
     logout,
   } = useAuth();
 
-  const handleSubmit = async (payload: { email: string; password: string; username?: string }) => {
+  const handleSubmit = async (payload: { email: string; password: string }) => {
     try {
-      await authenticate(payload, mode);
+      await authenticate(payload, 'login');
     } catch (_error) {
       // swallow: hook already exposes error message
     }
@@ -49,6 +54,11 @@ const App = () => {
         error={error}
         pendingVerification={pendingVerification}
         onSubmit={handleSubmit}
+        onRegisterStart={startRegistration}
+        onCheckRegisterCode={checkRegistrationCode}
+        onCompleteRegistration={completeRegistration}
+        onSaveProfile={saveProfile}
+        onFinishRegistration={finishRegistration}
         onVerify={verify}
         onResend={resend}
         onRequestReset={requestReset}
