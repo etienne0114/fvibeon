@@ -210,7 +210,7 @@ const wrongMark = { color: '#B93B55', textDecoration: 'line-through', fontWeight
 const LegendDot = ({ color, label }: { color: string; label: string }) => (
   <HStack spacing={1.5}>
     <Circle size="7px" bg={color} />
-    <Text fontSize="9px" color={inkSoft} fontWeight="600">
+    <Text fontSize="11px" color={inkSoft} fontWeight="600">
       {label}
     </Text>
   </HStack>
@@ -218,7 +218,7 @@ const LegendDot = ({ color, label }: { color: string; label: string }) => (
 
 const PhoneMockup = () => (
   <Box
-    w={{ base: '300px', md: '350px' }}
+    w={{ base: '310px', md: '385px' }}
     mx="auto"
     bg="white"
     border="10px solid"
@@ -230,14 +230,14 @@ const PhoneMockup = () => (
     <Box p={5} pb={6} bg="#FFFDFa">
       {/* Header */}
       <HStack spacing={3} mb={5}>
-        <Circle size="36px" bg={rose} color="white" fontWeight="700" fontSize="sm">
+        <Circle size="40px" bg={rose} color="white" fontWeight="700" fontSize="md">
           E
         </Circle>
         <Box flex={1}>
-          <Text fontSize="sm" fontWeight="700" color={ink}>
+          <Text fontSize="md" fontWeight="700" color={ink}>
             Muraho, Etienne 👋
           </Text>
-          <Text fontSize="xs" color={inkSoft}>
+          <Text fontSize="sm" color={inkSoft}>
             Grammar drill · English
           </Text>
         </Box>
@@ -254,7 +254,7 @@ const PhoneMockup = () => (
         <Text fontSize="10px" fontWeight="700" letterSpacing="0.12em" opacity={0.85}>
           CONTINUE LEARNING
         </Text>
-        <Text fontWeight="700" fontSize="md" mt={1}>
+        <Text fontWeight="700" fontSize="lg" mt={1}>
           Everyday conversations 101
         </Text>
         <Box mt={3} h="6px" bg="rgba(255,255,255,0.3)" borderRadius="full">
@@ -264,10 +264,10 @@ const PhoneMockup = () => (
 
       {/* Drill: user's sentence */}
       <Box bg="#FBE3E9" borderRadius="xl" borderBottomRightRadius="4px" p={4} mb={3} ml={8}>
-        <Text fontSize="9px" fontWeight="700" color={roseDeep} letterSpacing="0.1em" mb={1}>
+        <Text fontSize="10px" fontWeight="700" color={roseDeep} letterSpacing="0.1em" mb={1}>
           YOU WROTE
         </Text>
-        <Text fontSize="sm" color={ink} lineHeight="1.7">
+        <Text fontSize="md" color={ink} lineHeight="1.7">
           Yesterday I <Box as="span" {...wrongMark}>goed</Box> to the market and{' '}
           <Box as="span" {...wrongMark}>buyed</Box> some{' '}
           <Box as="span" {...typoMark}>frutis</Box>.
@@ -276,15 +276,15 @@ const PhoneMockup = () => (
 
       {/* Drill: tutor feedback with highlights */}
       <Box bg="#EAF2EE" borderRadius="xl" borderTopLeftRadius="4px" p={4} mb={3} mr={8}>
-        <Text fontSize="9px" fontWeight="700" color="#4E7A6A" letterSpacing="0.1em" mb={1}>
+        <Text fontSize="10px" fontWeight="700" color="#4E7A6A" letterSpacing="0.1em" mb={1}>
           TUTOR · 2 FIXES, 1 TYPO
         </Text>
-        <Text fontSize="sm" color={ink} lineHeight="1.7">
+        <Text fontSize="md" color={ink} lineHeight="1.7">
           Yesterday I <Box as="span" {...okMark}>went</Box> to the market and{' '}
           <Box as="span" {...okMark}>bought</Box> some{' '}
           <Box as="span" {...okMark}>fruits</Box>. 🎉
         </Text>
-        <Text fontSize="xs" color={inkSoft} mt={2} lineHeight="1.6">
+        <Text fontSize="sm" color={inkSoft} mt={2} lineHeight="1.6">
           "go" and "buy" are irregular — past tense <b>went</b> / <b>bought</b>.
         </Text>
       </Box>
@@ -302,14 +302,14 @@ const PhoneMockup = () => (
           <Icon as={FiZap} boxSize={4} />
         </Circle>
         <Box flex={1}>
-          <Text fontSize="9px" fontWeight="700" color="#B4823D" letterSpacing="0.1em">
+          <Text fontSize="10px" fontWeight="700" color="#B4823D" letterSpacing="0.1em">
             DRILL SCORE
           </Text>
-          <Text fontSize="sm" fontWeight="600" color={ink}>
+          <Text fontSize="md" fontWeight="600" color={ink}>
             8/10 · +12 XP earned
           </Text>
         </Box>
-        <Text fontSize="xs" fontWeight="700" color={sage}>
+        <Text fontSize="sm" fontWeight="700" color={sage}>
           Next drill →
         </Text>
       </HStack>
@@ -330,16 +330,25 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
   );
 
   return (
-    <Box bg={cream} minH="100vh" fontFamily='"Inter", system-ui, sans-serif' overflowX="hidden">
-      {/* ============ NAV ============ */}
-      <Container maxW="7xl" py={5}>
+    <Box bg={cream} minH="100vh" fontFamily='"Inter", system-ui, sans-serif' overflowX="clip">
+      {/* ============ NAV (fixed while scrolling) ============ */}
+      <Box
+        position="sticky"
+        top={0}
+        zIndex={1000}
+        bg="rgba(251,243,233,0.92)"
+        backdropFilter="blur(12px)"
+        borderBottom="1px solid"
+        borderColor={line}
+      >
+      <Container maxW="7xl" py={4}>
         <Flex align="center" justify="space-between">
           <Text fontFamily={serif} fontWeight="700" fontSize="2xl" color={ink}>
             Vibeon Learn
           </Text>
           <HStack spacing={8} display={{ base: 'none', md: 'flex' }}>
             {navLinks}
-            <PillButton onClick={onOpenApp}>Open the app</PillButton>
+            <PillButton onClick={onOpenApp}>Sign in</PillButton>
           </HStack>
           <IconButton
             aria-label="Toggle menu"
@@ -362,10 +371,11 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
             p={6}
           >
             {navLinks}
-            <PillButton onClick={onOpenApp}>Open the app</PillButton>
+            <PillButton onClick={onOpenApp}>Sign in</PillButton>
           </Stack>
         )}
       </Container>
+      </Box>
 
       {/* ============ HERO ============ */}
       <Container maxW="7xl" pt={{ base: 8, md: 14 }} pb={{ base: 14, md: 24 }}>

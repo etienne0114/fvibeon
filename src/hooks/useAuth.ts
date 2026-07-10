@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { register, login, verifyEmail, resendCode, googleLogin } from '../api/auth';
+import { register, login, verifyEmail, resendCode, googleLogin, forgotPassword, resetPassword } from '../api/auth';
 import { setAuthToken } from '../api/client';
 
 const TOKEN_KEY = 'learn_auth_token';
@@ -106,6 +106,35 @@ export function useAuth() {
     }
   }, []);
 
+  const requestReset = useCallback(async (email: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await forgotPassword({ email });
+      return response.message;
+    } catch (err: any) {
+      setError(extractError(err));
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const completeReset = useCallback(async (email: string, code: string, newPassword: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await resetPassword({ email, code, newPassword });
+      setToken(response.token);
+      setPendingVerification(null);
+    } catch (err: any) {
+      setError(extractError(err));
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   const cancelVerification = useCallback(() => {
     setPendingVerification(null);
     setError(null);
@@ -123,6 +152,8 @@ export function useAuth() {
     authenticate,
     verify,
     resend,
+    requestReset,
+    completeReset,
     cancelVerification,
     loginWithGoogle,
     logout,

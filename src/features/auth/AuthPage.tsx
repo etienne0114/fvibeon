@@ -64,6 +64,8 @@ interface AuthPageProps {
   onSubmit: (payload: { email: string; password: string; username?: string }) => Promise<void>;
   onVerify: (email: string, code: string) => Promise<void>;
   onResend: (email: string) => Promise<void>;
+  onRequestReset: (email: string) => Promise<string>;
+  onCompleteReset: (email: string, code: string, newPassword: string) => Promise<void>;
   onCancelVerification: () => void;
   onSwitchMode: () => void;
   onGoogleCredential: (credential: string) => Promise<void>;
@@ -141,6 +143,8 @@ const AuthPage = ({
   onSubmit,
   onVerify,
   onResend,
+  onRequestReset,
+  onCompleteReset,
   onCancelVerification,
   onSwitchMode,
   onGoogleCredential,
@@ -152,9 +156,14 @@ const AuthPage = ({
   const [showPassword, setShowPassword] = useState(false);
   const [code, setCode] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [forgotStage, setForgotStage] = useState<null | 'email' | 'reset'>(null);
+  const [resetMessage, setResetMessage] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   const isRegister = mode === 'register';
-  const isVerifying = Boolean(pendingVerification);
+  const isVerifying = Boolean(pendingVerification) && !forgotStage;
+  const isForgot = Boolean(forgotStage);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -172,6 +181,36 @@ const AuthPage = ({
     if (!pendingVerification || resendCooldown > 0) return;
     setResendCooldown(30);
     await onResend(pendingVerification.email);
+  };
+
+  const handleSendReset = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!email) return;
+    const message = await onRequestReset(email).catch(() => '');
+    if (message) {
+      setResetMessage(message);
+      setCode('');
+      setForgotStage('reset');
+    }
+  };
+
+  const handleResendReset = async () => {
+    if (resendCooldown > 0) return;
+    setResendCooldown(30);
+    await onRequestReset(email).catch(() => undefined);
+  };
+
+  const handleCompleteReset = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (code.length !== 6 || newPassword.length < 8) return;
+    await onCompleteReset(email, code, newPassword).catch(() => undefined);
+  };
+
+  const exitForgot = () => {
+    setForgotStage(null);
+    setResetMessage('');
+    setCode('');
+    setNewPassword('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -271,10 +310,22 @@ const AuthPage = ({
 
           <Stack spacing={2} mb={8}>
             <Text fontFamily={serif} fontWeight="600" fontSize={{ base: '3xl', md: '4xl' }} color={ink} lineHeight="1.1">
-              {isVerifying ? 'Check your email.' : isRegister ? 'Create your account.' : 'Welcome back.'}
+              {forgotStage === 'email'
+                ? 'Reset your password.'
+                : forgotStage === 'reset'
+                ? 'Check your email.'
+                : isVerifying
+                ? 'Check your email.'
+                : isRegister
+                ? 'Create your account.'
+                : 'Welcome back.'}
             </Text>
             <Text color={inkSoft} fontSize="sm">
-              {isVerifying
+              {forgotStage === 'email'
+                ? "Enter your account email and we'll send you a 6-digit reset code."
+                : forgotStage === 'reset'
+                ? `Enter the code we sent to ${email} and pick a new password.`
+                : isVerifying
                 ? `Enter the 6-digit code we sent to ${pendingVerification?.email}.`
                 : isRegister
                 ? 'Free forever. Your tutor is ready when you are.'
@@ -287,6 +338,138 @@ const AuthPage = ({
               <AlertIcon />
               {error}
             </Alert>
+          )}
+
+          {forgotStage === 'email' && (
+            <form onSubmit={handleSendReset}>
+              <Stack spacing={5}>
+                <FormControl isRequired>
+                  <FormLabel fontSize="sm" fontWeight="600" color={ink}>
+                    Email
+                  </FormLabel>
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    bg="white"
+                    border="1px solid"
+                    borderColor={line}
+                    borderRadius="xl"
+                    h="48px"
+                    _focus={{ borderColor: rose, boxShadow: `0 0 0 1px ${rose}` }}
+                    autoComplete="email"
+                  />
+                </FormControl>
+                <Button
+                  type="submit"
+                  isLoading={loading}
+                  isDisabled={!email}
+                  h="50px"
+                  borderRadius="full"
+                  bg={ink}
+                  color={cream}
+                  fontWeight="600"
+                  _hover={{ bg: '#db216f', transform: 'translateY(-1px)' }}
+                >
+                  Send reset code
+                </Button>
+                <Link fontSize="sm" color={inkSoft} textAlign="center" onClick={exitForgot}>
+                  ← Back to sign in
+                </Link>
+              </Stack>
+            </form>
+          )}
+
+          {forgotStage === 'reset' && (
+            <form onSubmit={handleCompleteReset}>
+              <Stack spacing={6}>
+                {resetMessage && (
+                  <Alert status="info" borderRadius="xl" fontSize="sm" bg="#EAF2EE" color={ink}>
+                    <AlertIcon color={sage} />
+                    {resetMessage}
+                  </Alert>
+                )}
+                <HStack justify="center" spacing={{ base: 2, md: 3 }}>
+                  <PinInput otp autoFocus size="lg" value={code} onChange={setCode} isDisabled={loading}>
+                    {[0, 1, 2, 3, 4, 5].map((i) => (
+                      <PinInputField
+                        key={i}
+                        bg="white"
+                        border="1px solid"
+                        borderColor={line}
+                        borderRadius="xl"
+                        fontWeight="700"
+                        color={ink}
+                        _focus={{ borderColor: rose, boxShadow: `0 0 0 1px ${rose}` }}
+                      />
+                    ))}
+                  </PinInput>
+                </HStack>
+                <FormControl isRequired>
+                  <FormLabel fontSize="sm" fontWeight="600" color={ink}>
+                    New password
+                  </FormLabel>
+                  <InputGroup>
+                    <Input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="At least 8 characters"
+                      bg="white"
+                      border="1px solid"
+                      borderColor={line}
+                      borderRadius="xl"
+                      h="48px"
+                      _focus={{ borderColor: rose, boxShadow: `0 0 0 1px ${rose}` }}
+                      autoComplete="new-password"
+                    />
+                    <InputRightElement h="48px">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowNewPassword((v) => !v)}
+                        color={inkSoft}
+                        tabIndex={-1}
+                        aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showNewPassword ? <ViewOffIcon /> : <ViewIcon />}
+                      </Button>
+                    </InputRightElement>
+                  </InputGroup>
+                </FormControl>
+                <Button
+                  type="submit"
+                  isLoading={loading}
+                  isDisabled={code.length !== 6 || newPassword.length < 8}
+                  h="50px"
+                  borderRadius="full"
+                  bg={ink}
+                  color={cream}
+                  fontWeight="600"
+                  _hover={{ bg: '#463039', transform: 'translateY(-1px)' }}
+                >
+                  Reset password & sign in
+                </Button>
+                <HStack justify="center" spacing={1}>
+                  <Text fontSize="sm" color={inkSoft}>
+                    Didn't get it?
+                  </Text>
+                  <Link
+                    fontSize="sm"
+                    fontWeight="700"
+                    color={resendCooldown > 0 ? inkSoft : rose}
+                    pointerEvents={resendCooldown > 0 ? 'none' : 'auto'}
+                    onClick={handleResendReset}
+                  >
+                    {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
+                  </Link>
+                </HStack>
+                <Link fontSize="sm" color={inkSoft} textAlign="center" onClick={exitForgot}>
+                  ← Back to sign in
+                </Link>
+              </Stack>
+            </form>
           )}
 
           {isVerifying && pendingVerification && (
@@ -352,7 +535,7 @@ const AuthPage = ({
             </Stack>
           )}
 
-          {!isVerifying && (
+          {!isVerifying && !isForgot && (
           <>
           <form onSubmit={handleSubmit}>
             <Stack spacing={5}>
@@ -394,9 +577,25 @@ const AuthPage = ({
                 />
               </FormControl>
               <FormControl isRequired>
-                <FormLabel fontSize="sm" fontWeight="600" color={ink}>
-                  Password
-                </FormLabel>
+                <Flex justify="space-between" align="center">
+                  <FormLabel fontSize="sm" fontWeight="600" color={ink}>
+                    Password
+                  </FormLabel>
+                  {!isRegister && (
+                    <Link
+                      fontSize="sm"
+                      fontWeight="600"
+                      color={rose}
+                      mb={2}
+                      onClick={() => {
+                        setForgotStage('email');
+                        setCode('');
+                      }}
+                    >
+                      Forgot password?
+                    </Link>
+                  )}
+                </Flex>
                 <InputGroup>
                   <Input
                     type={showPassword ? 'text' : 'password'}

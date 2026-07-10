@@ -36,3 +36,13 @@ export async function googleLogin(credential: string) {
   const response = await client.post('/auth/google', { credential });
   return response.data as { success: boolean } & AuthResponse;
 }
+
+export async function forgotPassword(payload: { email: string }) {
+  const response = await client.post('/auth/forgot-password', payload);
+  return response.data as { success: boolean; message: string };
+}
+
+export async function resetPassword(payload: { email: string; code: string; newPassword: string }) {
+  const response = await client.post('/auth/reset-password', payload);
+  return response.data as { success: boolean } & AuthResponse;
+}

@@ -16,6 +16,8 @@ const App = () => {
     authenticate,
     verify,
     resend,
+    requestReset,
+    completeReset,
     cancelVerification,
     pendingVerification,
     loginWithGoogle,
@@ -48,6 +50,8 @@ const App = () => {
         onSubmit={handleSubmit}
         onVerify={verify}
         onResend={resend}
+        onRequestReset={requestReset}
+        onCompleteReset={completeReset}
         onCancelVerification={cancelVerification}
         onSwitchMode={handleModeToggle}
         onGoogleCredential={loginWithGoogle}
