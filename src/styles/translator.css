@@ -1,0 +1,25 @@
+:root {
+  --translator-panel-bg: #0b0f1b;
+  --translator-card-bg: #111733;
+  --translator-border: #2c3250;
+}
+
+.translator-shell {
+  background: var(--translator-panel-bg);
+  color: #f5f7ff;
+  border-radius: 1.5rem;
+  padding: 2rem;
+}
+
+.translator-shell .translator-tabs button {
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.translator-shell select,
+.translator-shell input,
+.translator-shell textarea {
+  background: var(--translator-card-bg);
+  border: 1px solid var(--translator-border);
+  color: #fff;
+}
