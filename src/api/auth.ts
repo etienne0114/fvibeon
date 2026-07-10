@@ -14,3 +14,8 @@ export async function login(payload: { email: string; password: string }) {
   const response = await client.post('/auth/login', payload);
   return response.data as { success: boolean } & AuthResponse;
 }
+
+export async function googleLogin(credential: string) {
+  const response = await client.post('/auth/google', { credential });
+  return response.data as { success: boolean } & AuthResponse;
+}

@@ -195,9 +195,30 @@ const FloatingCard = ({
   </HStack>
 );
 
+// Word-level feedback marks used in the drill preview
+const okMark = { bg: '#E6F2EB', color: '#3E7A5E', px: '3px', borderRadius: '4px', fontWeight: 600 };
+const typoMark = {
+  bg: '#FBF0DC',
+  color: '#9A6B25',
+  px: '3px',
+  borderRadius: '4px',
+  fontWeight: 600,
+  borderBottom: '2px dashed #D9A544',
+};
+const wrongMark = { color: '#B93B55', textDecoration: 'line-through', fontWeight: 600 };
+
+const LegendDot = ({ color, label }: { color: string; label: string }) => (
+  <HStack spacing={1.5}>
+    <Circle size="7px" bg={color} />
+    <Text fontSize="9px" color={inkSoft} fontWeight="600">
+      {label}
+    </Text>
+  </HStack>
+);
+
 const PhoneMockup = () => (
   <Box
-    w={{ base: '280px', md: '320px' }}
+    w={{ base: '290px', md: '340px' }}
     mx="auto"
     bg="white"
     border="10px solid"
@@ -207,73 +228,90 @@ const PhoneMockup = () => (
     overflow="hidden"
   >
     <Box p={4} bg="#FFFDFa">
+      {/* Header */}
       <HStack spacing={3} mb={4}>
         <Circle size="36px" bg={rose} color="white" fontWeight="700" fontSize="sm">
           E
         </Circle>
-        <Box>
+        <Box flex={1}>
           <Text fontSize="sm" fontWeight="700" color={ink}>
             Muraho, Etienne 👋
           </Text>
           <Text fontSize="xs" color={inkSoft}>
-            Ready to learn?
+            Grammar drill · English
           </Text>
         </Box>
+        <HStack bg="#EAF2EE" borderRadius="full" px={2.5} py={1} spacing={1}>
+          <Text fontSize="xs">🔥</Text>
+          <Text fontSize="xs" fontWeight="700" color={ink}>
+            4
+          </Text>
+        </HStack>
       </HStack>
 
+      {/* Continue learning */}
       <Box bg={roseDeep} borderRadius="2xl" p={4} mb={3} color="white">
         <Text fontSize="10px" fontWeight="700" letterSpacing="0.12em" opacity={0.85}>
           CONTINUE LEARNING
         </Text>
         <Text fontWeight="700" fontSize="md" mt={1}>
-          Kinyarwanda basics 101
+          Everyday conversations 101
         </Text>
         <Box mt={3} h="6px" bg="rgba(255,255,255,0.3)" borderRadius="full">
           <Box w="68%" h="full" bg="white" borderRadius="full" />
         </Box>
       </Box>
 
-      <Grid templateColumns="1fr 1fr" gap={3} mb={3}>
-        <Box bg="#EAF2EE" borderRadius="xl" p={3} textAlign="center">
-          <Text fontSize="lg">🔥</Text>
-          <Text fontWeight="700" color={ink} fontSize="sm">
-            4-day streak
-          </Text>
-        </Box>
-        <Box bg="white" border="1px solid" borderColor={line} borderRadius="xl" p={3} textAlign="center">
-          <Text fontSize="lg">🎯</Text>
-          <Text fontWeight="700" color={ink} fontSize="sm">
-            Daily drill
-          </Text>
-        </Box>
-      </Grid>
+      {/* Drill: user's sentence */}
+      <Box bg="#FBE3E9" borderRadius="xl" borderBottomRightRadius="4px" p={3} mb={2} ml={8}>
+        <Text fontSize="9px" fontWeight="700" color={roseDeep} letterSpacing="0.1em" mb={1}>
+          YOU WROTE
+        </Text>
+        <Text fontSize="sm" color={ink} lineHeight="1.7">
+          Yesterday I <Box as="span" {...wrongMark}>goed</Box> to the market and{' '}
+          <Box as="span" {...wrongMark}>buyed</Box> some{' '}
+          <Box as="span" {...typoMark}>frutis</Box>.
+        </Text>
+      </Box>
 
-      <HStack bg="#FBE3E9" borderRadius="xl" p={3} mb={3} spacing={3}>
-        <Circle size="34px" bg={rose} color="white">
-          <Icon as={FiMessageCircle} boxSize={4} />
-        </Circle>
-        <Box>
-          <Text fontSize="9px" fontWeight="700" color={roseDeep} letterSpacing="0.1em">
-            AI TUTOR · ONLINE
-          </Text>
-          <Text fontSize="sm" fontWeight="600" color={ink}>
-            Ask me anything
-          </Text>
-        </Box>
+      {/* Drill: tutor feedback with highlights */}
+      <Box bg="#EAF2EE" borderRadius="xl" borderTopLeftRadius="4px" p={3} mb={2} mr={8}>
+        <Text fontSize="9px" fontWeight="700" color="#4E7A6A" letterSpacing="0.1em" mb={1}>
+          TUTOR · 2 FIXES, 1 TYPO
+        </Text>
+        <Text fontSize="sm" color={ink} lineHeight="1.7">
+          Yesterday I <Box as="span" {...okMark}>went</Box> to the market and{' '}
+          <Box as="span" {...okMark}>bought</Box> some{' '}
+          <Box as="span" {...okMark}>fruits</Box>. 🎉
+        </Text>
+        <Text fontSize="xs" color={inkSoft} mt={2} lineHeight="1.6">
+          "go" and "buy" are irregular — past tense <b>went</b> / <b>bought</b>.
+        </Text>
+      </Box>
+
+      {/* Legend */}
+      <HStack justify="flex-start" pl={1} spacing={3} mb={3} py={1}>
+        <LegendDot color="#3E7A5E" label="Corrected" />
+        <LegendDot color="#D9A544" label="Misspelled" />
+        <LegendDot color="#B93B55" label="Incorrect" />
       </HStack>
 
+      {/* Score */}
       <HStack bg={card} borderRadius="xl" p={3} spacing={3}>
         <Circle size="34px" bg={amber} color="white">
-          <Icon as={FiGlobe} boxSize={4} />
+          <Icon as={FiZap} boxSize={4} />
         </Circle>
-        <Box>
+        <Box flex={1}>
           <Text fontSize="9px" fontWeight="700" color="#B4823D" letterSpacing="0.1em">
-            TRANSLATOR · RW EN FR
+            DRILL SCORE
           </Text>
           <Text fontSize="sm" fontWeight="600" color={ink}>
-            "Amahoro" → "Peace"
+            8/10 · +12 XP earned
           </Text>
         </Box>
+        <Text fontSize="xs" fontWeight="700" color={sage}>
+          Next drill →
+        </Text>
       </HStack>
     </Box>
   </Box>
@@ -406,10 +444,10 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
           <Box position="relative" py={{ base: 0, lg: 10 }}>
             <PhoneMockup />
             <FloatingCard
-              icon={FiVolume2}
+              icon={FiMessageCircle}
               tile={sage}
-              title="Voice narration"
-              sub="Listen & repeat"
+              title="Live corrections"
+              sub="As you write & speak"
               top="6%"
               left="-4%"
             />
@@ -418,8 +456,8 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
               tile={rose}
               title="Instant translator"
               sub="Kinyarwanda · English · French"
-              bottom="22%"
-              right="-6%"
+              bottom="3%"
+              right="-4%"
             />
             <FloatingCard
               icon={FiZap}
