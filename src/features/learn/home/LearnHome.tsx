@@ -1,81 +1,109 @@
-import { Stack } from '@chakra-ui/react';
 import { useState } from 'react';
-import LearningDashboard from '../dashboard/LearningDashboard';
-import CourseExplorer from '../courses/CourseExplorer';
+import { Box, Text } from '@chakra-ui/react';
+import HomeShell from '../../home/HomeShell';
+import Dashboard from '../../home/Dashboard';
+import CoursesView from '../../home/CoursesView';
 import TutorChat from '../chat/TutorChat';
 import TranslatorPanel from '../translator/TranslatorPanel';
-import { WorkspaceShell } from '../../../components';
-import { useDashboard } from '../../../hooks/useDashboard';
-import { useTutorChat } from '../../../hooks/useTutorChat';
-import PracticeShortcuts from './PracticeShortcuts';
-import AchievementsPanel from '../achievements/AchievementsPanel';
-import AnalyticsPanel from '../dashboard/AnalyticsPanel';
 import PracticesPanel from '../practices/PracticesPanel';
-
-const sections = [
-  { id: 'dashboard', title: 'Dashboard', description: 'Track progress and analytics', icon: '📊' },
-  { id: 'courses', title: 'Courses', description: 'New paths and learning tracks', icon: '📚' },
-  { id: 'translator', title: 'Translator', description: 'Use vibeon_translator for any text', icon: '🌐' },
-  { id: 'chat', title: 'AI chat', description: 'Ask the tutor anything', icon: '💬' },
-  { id: 'practices', title: 'Practices', description: 'Roleplay, quiz, listening drills', icon: '🎯' },
-  { id: 'achievements', title: 'Achievements', description: 'Celebrate milestones', icon: '🏆' },
-];
-
-interface LearnHomeProps {
-  onLogout?: () => void;
-}
+import AchievementsPanel from '../achievements/AchievementsPanel';
+import { useDashboard } from '../../../hooks/useDashboard';
+import { useMe } from '../../../hooks/useMe';
+import { useTutorChat } from '../../../hooks/useTutorChat';
+import { ink, line, serif } from '../../../theme/brand';
 
 interface LearnHomeProps {
   onLogout?: () => void;
   token?: string | null;
 }
 
+// White panel wrapper so legacy panels sit well on the cream background
+const PanelSurface = ({ title, children }: { title?: string; children: React.ReactNode }) => (
+  <Box bg="white" border="1px solid" borderColor={line} borderRadius="2xl" p={{ base: 4, md: 6 }}>
+    {title && (
+      <Text fontFamily={serif} fontWeight="600" fontSize="xl" color={ink} mb={4}>
+        {title}
+      </Text>
+    )}
+    {children}
+  </Box>
+);
+
 const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
-  const [activeSection, setActiveSection] = useState(sections[0].id);
-  const { summary, generatedAt, isLoading: dashLoading, error: dashError } = useDashboard({ enabled: Boolean(token) });
+  const [activeSection, setActiveSection] = useState('dashboard');
+  const [openCourseId, setOpenCourseId] = useState<string | null>(null);
+  const user = useMe(Boolean(token));
+  const { data, isLoading, error, refetch } = useDashboard({ enabled: Boolean(token) });
   const { message, setMessage, helperText, sendMessage, isLoading: isChatting } = useTutorChat();
 
-  const renderMainPanel = () => {
+  const openCourse = (courseId: string | null) => {
+    setOpenCourseId(courseId);
+    setActiveSection('courses');
+  };
+
+  const renderSection = () => {
     switch (activeSection) {
       case 'courses':
-        return <CourseExplorer enabled />;
+        return <CoursesView openCourseId={openCourseId} onOpenCourse={setOpenCourseId} onDataChanged={refetch} />;
       case 'translator':
-        return <TranslatorPanel />;
+        return (
+          <PanelSurface>
+            <TranslatorPanel />
+          </PanelSurface>
+        );
       case 'chat':
-        return <TutorChat message={message} onChange={setMessage} onSend={sendMessage} isSending={isChatting} helperText={helperText} />;
+        return (
+          <PanelSurface>
+            <TutorChat
+              message={message}
+              onChange={setMessage}
+              onSend={sendMessage}
+              isSending={isChatting}
+              helperText={helperText}
+            />
+          </PanelSurface>
+        );
       case 'practices':
-        return <PracticesPanel />;
+        return (
+          <PanelSurface>
+            <PracticesPanel />
+          </PanelSurface>
+        );
       case 'achievements':
-        return <AchievementsPanel />;
+        return (
+          <PanelSurface>
+            <AchievementsPanel />
+          </PanelSurface>
+        );
       case 'dashboard':
       default:
         return (
-          <Stack spacing={6}>
-            <LearningDashboard summary={summary} generatedAt={generatedAt} loading={dashLoading} error={dashError} />
-            <AnalyticsPanel />
-            <CourseExplorer enabled={false} limit={3} />
-            <AchievementsPanel />
-            <PracticeShortcuts
-              shortcuts={[
-                { id: 'vocabulary', title: 'Daily Vocab', description: 'Boost your vocabulary streak', icon: '🧠', action: 'Practice now' },
-                { id: 'listening', title: 'Listening Drill', description: 'Match pronunciation', icon: '🎧', action: 'Start listening' },
-                { id: 'roleplay', title: 'Roleplay', description: 'Simulate real conversations', icon: '🎭', action: 'Open roleplay' },
-              ]}
-              onAction={(section) => setActiveSection(section === 'vocabulary' ? 'translator' : section === 'listening' ? 'chat' : 'courses')}
-            />
-          </Stack>
+          <Dashboard
+            data={data}
+            isLoading={isLoading}
+            error={error}
+            username={user?.firstName || user?.username}
+            onOpenCourse={openCourse}
+            onBrowseCourses={() => openCourse(null)}
+            onGoToSection={setActiveSection}
+          />
         );
     }
   };
 
   return (
-    <WorkspaceShell
-      sections={sections}
+    <HomeShell
       activeSection={activeSection}
-      onSectionChange={setActiveSection}
-      main={renderMainPanel()}
+      onSectionChange={(id) => {
+        setActiveSection(id);
+        if (id !== 'courses') setOpenCourseId(null);
+      }}
+      username={user?.firstName || user?.username}
+      streakDays={data?.summary?.streakDays ?? 0}
       onLogout={onLogout}
-    />
+    >
+      {renderSection()}
+    </HomeShell>
   );
 };
 

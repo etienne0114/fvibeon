@@ -5,12 +5,54 @@ export interface DashboardSummary {
   enrolledCourses: number;
   completedCourses: number;
   activeCourses: number;
+  streakDays: number;
+  totalTimeMinutes: number;
+  lessonsCompleted: number;
+}
+
+export interface DashboardCourse {
+  id: string;
+  title: string;
+  progress: number;
+  isCompleted: boolean;
+  imageUrl?: string | null;
+  category?: string;
+  level?: string;
+  lessonCount?: number;
+}
+
+export interface ContinueLearning {
+  courseId: string;
+  courseTitle: string;
+  level?: string;
+  progress: number;
+  totalLessons: number;
+  completedLessons: number;
+  nextLesson: { id: string; title: string; order: number; duration: number; type: string } | null;
+}
+
+export interface WeeklyActivityDay {
+  date: string;
+  minutes: number;
+  lessons: number;
+}
+
+export interface AchievementItem {
+  id: string;
+  title: string;
+  description?: string | null;
+  type: string;
+  xpReward: number;
+  unlockedAt: string;
 }
 
 export interface DashboardPayload {
   summary: DashboardSummary;
-  recentCourses: Array<Record<string, unknown>>;
-  courseRecommendations: Array<Record<string, unknown>>;
+  recentCourses: DashboardCourse[];
+  continueLearning: ContinueLearning | null;
+  weeklyActivity: WeeklyActivityDay[];
+  achievements: AchievementItem[];
+  learningGoals: { goals: unknown[]; timeframe: string };
   generatedAt: string;
 }
 
@@ -20,8 +62,7 @@ export interface UseDashboardOptions {
 
 export function useDashboard(options: UseDashboardOptions = {}) {
   const { enabled = true } = options;
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [generatedAt, setGeneratedAt] = useState<string | undefined>(undefined);
+  const [data, setData] = useState<DashboardPayload | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,13 +74,12 @@ export function useDashboard(options: UseDashboardOptions = {}) {
       setIsLoading(true);
       const response = await fetchDashboard();
       const payload: DashboardPayload | null = response?.data ?? null;
-      if (payload && payload.summary) {
-        setSummary(payload.summary);
-        setGeneratedAt(payload.generatedAt);
+      if (payload) {
+        setData(payload);
       }
       setError(null);
     } catch (err: any) {
-      setError(err.message || 'Failed to load dashboard');
+      setError(err?.response?.data?.error || 'Failed to load dashboard');
     } finally {
       setIsLoading(false);
     }
@@ -49,5 +89,12 @@ export function useDashboard(options: UseDashboardOptions = {}) {
     load();
   }, [load]);
 
-  return { summary, generatedAt, isLoading, error, refetch: load };
+  return {
+    data,
+    summary: data?.summary ?? null,
+    generatedAt: data?.generatedAt,
+    isLoading,
+    error,
+    refetch: load,
+  };
 }

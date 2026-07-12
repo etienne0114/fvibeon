@@ -1,6 +1,4 @@
-import { Stack } from '@chakra-ui/react';
 import { useState } from 'react';
-import AppShell from './components/layout/AppShell';
 import AuthPage, { AuthMode } from './features/auth/AuthPage';
 import LandingPage from './features/landing/LandingPage';
 import LearnHome from './features/learn/home/LearnHome';
@@ -72,13 +70,7 @@ const App = () => {
     );
   }
 
-  return (
-    <AppShell>
-      <Stack spacing={0} h="full" w="full" flex={1} minH={0}>
-        <LearnHome token={token} onLogout={logout} />
-      </Stack>
-    </AppShell>
-  );
+  return <LearnHome token={token} onLogout={logout} />;
 };
 
 export default App;

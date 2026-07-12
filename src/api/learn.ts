@@ -30,3 +30,13 @@ export async function chatWithTutor(message: string) {
   const response = await client.post('/ai/tutor', { message });
   return response.data;
 }
+
+export async function fetchCourse(courseId: string) {
+  const response = await client.get(`/courses/${courseId}`);
+  return response.data;
+}
+
+export async function fetchMe() {
+  const response = await client.get('/auth/me');
+  return response.data;
+}
