@@ -137,7 +137,7 @@ const VocabularyDrill = () => {
       </HStack>
 
       {stats && (
-        <SimpleGrid columns={4} spacing={3}>
+        <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3}>
           <StatPill label="Words" value={stats.totalWords} />
           <StatPill label="Mastered" value={stats.mastered} />
           <StatPill label="Accuracy" value={`${stats.accuracy}%`} />
