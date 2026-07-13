@@ -8,8 +8,7 @@ import CoursesView from '../../home/CoursesView';
 // bundle (and first paint) small.
 const TutorChat = lazy(() => import('../chat/TutorChat'));
 const TranslatorPanel = lazy(() => import('../translator/TranslatorPanel'));
-const PracticesPanel = lazy(() => import('../practices/PracticesPanel'));
-const AchievementsPanel = lazy(() => import('../achievements/AchievementsPanel'));
+const PracticeView = lazy(() => import('../../home/practice/PracticeView'));
 
 const PanelFallback = () => (
   <Stack spacing={4}>
@@ -76,13 +75,13 @@ const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
       case 'practices':
         return (
           <PanelSurface>
-            <PracticesPanel />
+            <PracticeView />
           </PanelSurface>
         );
       case 'achievements':
         return (
           <PanelSurface>
-            <AchievementsPanel />
+            <PracticeView initialMode="achievements" />
           </PanelSurface>
         );
       case 'dashboard':
