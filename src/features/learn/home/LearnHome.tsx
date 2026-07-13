@@ -73,15 +73,18 @@ const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
           </PanelSurface>
         );
       case 'practices':
+        // key forces a remount when switching from the "achievements" nav
+        // entry — otherwise React reuses the mounted PracticeView and its
+        // internal tab state ignores the new initialMode prop.
         return (
           <PanelSurface>
-            <PracticeView />
+            <PracticeView key="practices" />
           </PanelSurface>
         );
       case 'achievements':
         return (
           <PanelSurface>
-            <PracticeView initialMode="achievements" />
+            <PracticeView key="achievements" initialMode="achievements" />
           </PanelSurface>
         );
       case 'dashboard':
