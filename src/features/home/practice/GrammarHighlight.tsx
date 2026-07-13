@@ -1,6 +1,5 @@
 import { Fragment } from 'react';
-import { Box, HStack, Icon, Text, Tooltip } from '@chakra-ui/react';
-import { FiXCircle, FiCheckCircle, FiInfo } from 'react-icons/fi';
+import { Text, Tooltip } from '@chakra-ui/react';
 import { ink } from '../../../theme/brand';
 
 export interface GrammarError {
@@ -20,74 +19,55 @@ interface GrammarHighlightProps {
   color?: string;
 }
 
-// Solid, opaque pill colors — a semi-transparent tint read as a muddy smear
-// on top of the dark user-message bubble. White text on a saturated fill is
-// legible everywhere the highlight can appear.
-const WRONG_BG = '#C24560'; // roseDeep, solid
-const RIGHT_BG = '#2F9E64'; // a clear, unambiguous success green (brand sage read too muted at badge size)
+// Colored, underlined TEXT — no pill/badge background box. A solid-fill box
+// forces `display: inline-flex` + `whiteSpace: nowrap` to keep its icon and
+// label glued together, which is exactly what broke mobile: when a
+// correction is a whole rewritten clause (not a single word), that
+// unbreakable unit can't wrap and blows out past the bubble edge. Plain
+// inline text has no such constraint — it wraps at any word boundary like
+// the rest of the sentence, at any length, on any screen.
+const MISTAKE_COLOR = '#FF9CB3'; // bright rose — reads clearly on the dark user bubble
+const CORRECTION_COLOR = '#6EE7B7'; // clear mint green — reads clearly on the dark user bubble
 
-// Mistake and correction render as two SEPARATE inline pills (not one fused
-// unit) so the browser can wrap between them on narrow screens — a single
-// non-breaking flex group around both was overflowing mobile bubbles.
-const MistakePill = ({ error }: { error: GrammarError }) => (
+const MistakeText = ({ error }: { error: GrammarError }) => (
   <Tooltip
-    label={
-      <HStack spacing={1.5} maxW="220px">
-        <Icon as={FiInfo} boxSize={3} flexShrink={0} />
-        <Text fontSize="xs">{error.explanation || `Should be "${error.correction}"`}</Text>
-      </HStack>
-    }
+    label={error.explanation || `Should be "${error.correction}"`}
     bg={ink}
     color="white"
     borderRadius="lg"
     px={3}
     py={2}
+    fontSize="xs"
+    maxW="240px"
     hasArrow
     placement="top"
     openDelay={100}
   >
-    <Box
+    <Text
       as="span"
-      display="inline-flex"
-      alignItems="center"
-      gap="3px"
-      bg={WRONG_BG}
-      color="white"
-      px={2}
-      py="1px"
-      my="2px"
-      borderRadius="md"
+      color={MISTAKE_COLOR}
+      textDecoration="line-through"
+      textDecorationThickness="1.5px"
+      fontWeight="600"
       cursor="help"
-      whiteSpace="nowrap"
+      tabIndex={0}
     >
-      <Icon as={FiXCircle} boxSize={2.5} />
-      <Text as="span" fontSize="sm" textDecoration="line-through" fontWeight="600">
-        {error.incorrectText}
-      </Text>
-    </Box>
+      {error.incorrectText}
+    </Text>
   </Tooltip>
 );
 
-const CorrectionPill = ({ text }: { text: string }) => (
-  <Box
+const CorrectionText = ({ text }: { text: string }) => (
+  <Text
     as="span"
-    display="inline-flex"
-    alignItems="center"
-    gap="3px"
-    bg={RIGHT_BG}
-    color="white"
-    px={2}
-    py="1px"
-    my="2px"
-    ml="4px"
-    borderRadius="md"
-    whiteSpace="nowrap"
+    color={CORRECTION_COLOR}
+    textDecoration="underline"
+    textDecorationThickness="1.5px"
+    textUnderlineOffset="3px"
+    fontWeight="700"
   >
-    <Icon as={FiCheckCircle} boxSize={2.5} />
-    <Text as="span" fontSize="sm" fontWeight="700">
-      {text}
-    </Text>
-  </Box>
+    {text}
+  </Text>
 );
 
 const GrammarHighlight = ({ text, errors, color }: GrammarHighlightProps) => {
@@ -108,14 +88,19 @@ const GrammarHighlight = ({ text, errors, color }: GrammarHighlightProps) => {
     if (err.startIndex > cursor) {
       parts.push(<Fragment key={`t-${i}`}>{text.slice(cursor, err.startIndex)}</Fragment>);
     }
-    parts.push(<MistakePill key={`e-${i}`} error={err} />);
-    parts.push(<CorrectionPill key={`c-${i}`} text={err.correction} />);
+    parts.push(<MistakeText key={`e-${i}`} error={err} />);
+    parts.push(
+      <Text as="span" key={`a-${i}`} color="whiteAlpha.600" fontWeight="500" mx="4px">
+        →
+      </Text>,
+    );
+    parts.push(<CorrectionText key={`c-${i}`} text={err.correction} />);
     cursor = err.endIndex;
   });
   if (cursor < text.length) parts.push(<Fragment key="t-last">{text.slice(cursor)}</Fragment>);
 
   return (
-    <Text fontSize="sm" color={color} lineHeight="2.1" whiteSpace="normal" wordBreak="break-word">
+    <Text fontSize="sm" color={color} lineHeight="1.9" whiteSpace="normal" wordBreak="break-word">
       {parts}
     </Text>
   );
