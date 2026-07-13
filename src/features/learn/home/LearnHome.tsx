@@ -1,12 +1,22 @@
-import { useState } from 'react';
-import { Box, Text } from '@chakra-ui/react';
+import { lazy, Suspense, useState } from 'react';
+import { Box, Skeleton, Stack, Text } from '@chakra-ui/react';
 import HomeShell from '../../home/HomeShell';
 import Dashboard from '../../home/Dashboard';
 import CoursesView from '../../home/CoursesView';
-import TutorChat from '../chat/TutorChat';
-import TranslatorPanel from '../translator/TranslatorPanel';
-import PracticesPanel from '../practices/PracticesPanel';
-import AchievementsPanel from '../achievements/AchievementsPanel';
+
+// Heavy, rarely-first-visited panels load on demand to keep the initial
+// bundle (and first paint) small.
+const TutorChat = lazy(() => import('../chat/TutorChat'));
+const TranslatorPanel = lazy(() => import('../translator/TranslatorPanel'));
+const PracticesPanel = lazy(() => import('../practices/PracticesPanel'));
+const AchievementsPanel = lazy(() => import('../achievements/AchievementsPanel'));
+
+const PanelFallback = () => (
+  <Stack spacing={4}>
+    <Skeleton h="36px" maxW="280px" borderRadius="lg" />
+    <Skeleton h="180px" borderRadius="2xl" />
+  </Stack>
+);
 import { useDashboard } from '../../../hooks/useDashboard';
 import { useMe } from '../../../hooks/useMe';
 import { useTutorChat } from '../../../hooks/useTutorChat';
@@ -102,7 +112,7 @@ const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
       streakDays={data?.summary?.streakDays ?? 0}
       onLogout={onLogout}
     >
-      {renderSection()}
+      <Suspense fallback={<PanelFallback />}>{renderSection()}</Suspense>
     </HomeShell>
   );
 };

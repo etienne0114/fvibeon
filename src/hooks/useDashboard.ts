@@ -60,9 +60,13 @@ export interface UseDashboardOptions {
   enabled?: boolean;
 }
 
+// Module-level cache: switching sections or remounting shows the last data
+// instantly while a background refresh runs (stale-while-revalidate).
+let dashboardCache: DashboardPayload | null = null;
+
 export function useDashboard(options: UseDashboardOptions = {}) {
   const { enabled = true } = options;
-  const [data, setData] = useState<DashboardPayload | null>(null);
+  const [data, setData] = useState<DashboardPayload | null>(dashboardCache);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,6 +79,7 @@ export function useDashboard(options: UseDashboardOptions = {}) {
       const response = await fetchDashboard();
       const payload: DashboardPayload | null = response?.data ?? null;
       if (payload) {
+        dashboardCache = payload;
         setData(payload);
       }
       setError(null);

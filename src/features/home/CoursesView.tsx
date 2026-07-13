@@ -428,9 +428,12 @@ interface CoursesViewProps {
   onDataChanged: () => void;
 }
 
+// Course catalog rarely changes — keep the last copy for instant back-navigation
+let coursesCache: CourseSummary[] | null = null;
+
 const CoursesView = ({ openCourseId, onOpenCourse, onDataChanged }: CoursesViewProps) => {
-  const [courses, setCourses] = useState<CourseSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [courses, setCourses] = useState<CourseSummary[]>(coursesCache ?? []);
+  const [loading, setLoading] = useState(!coursesCache);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -439,7 +442,11 @@ const CoursesView = ({ openCourseId, onOpenCourse, onDataChanged }: CoursesViewP
       try {
         setLoading(true);
         const response = await fetchCourses({ limit: 30 });
-        if (!cancelled) setCourses(response.courses ?? []);
+        const list: CourseSummary[] = response.courses ?? [];
+        coursesCache = list;
+        if (!cancelled) {
+          setCourses(list);
+        }
       } catch (err: any) {
         if (!cancelled) setError(err?.response?.data?.error || 'Failed to load courses');
       } finally {
