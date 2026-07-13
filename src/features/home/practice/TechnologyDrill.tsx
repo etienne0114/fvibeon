@@ -132,6 +132,7 @@ const TechnologyDrill = () => {
       title={active.title}
       subtitle={active.description}
       turns={initialTurns}
+      language="en"
       onSend={(message, audio) => sendTechnologyMessage(sessionId, message, 'en', audio)}
       onComplete={() => completeTechnologySession(sessionId)}
       onExit={exit}

@@ -135,6 +135,7 @@ const RoleplayDrill = () => {
       title={active.title}
       subtitle={active.description}
       turns={initialTurns}
+      language="en"
       onSend={(message, audio) => sendRoleplayMessage(sessionId, message, 'en', audio)}
       onComplete={() => completeRoleplaySession(sessionId)}
       onExit={exit}

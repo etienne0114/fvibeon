@@ -13,30 +13,38 @@ import {
   Input,
   Spinner,
   Stack,
+  Switch,
   Text,
 } from '@chakra-ui/react';
 import { ArrowBackIcon, ArrowUpIcon } from '@chakra-ui/icons';
 import { FiMic, FiSquare, FiPlay, FiTrash2, FiVolume2, FiAward } from 'react-icons/fi';
 import { useAudioRecorder } from '../../../hooks/useAudioRecorder';
 import { useTTS } from '../../../hooks/useTTS';
-import { ink, inkSoft, rose, card, line, serif, sage, sageDeep } from '../../../theme/brand';
+import { useSpeechRecognition } from '../../../hooks/useSpeechRecognition';
+import { ink, inkSoft, rose, card, line, serif, sage, sageDeep, sageTint } from '../../../theme/brand';
+import GrammarHighlight, { GrammarError } from './GrammarHighlight';
 
 export interface ChatTurn {
   role: 'USER' | 'ASSISTANT';
   content: string;
   confidence?: number | null;
+  grammarErrors?: GrammarError[];
+  nativeSpeakerVersion?: string | null;
 }
 
 export interface SendResult {
   reply: string;
   confidence?: number | null;
   transcribedText?: string | null;
+  grammarErrors?: GrammarError[];
+  nativeSpeakerVersion?: string | null;
 }
 
 interface DrillChatSessionProps {
   title: string;
   subtitle: string;
   turns: ChatTurn[];
+  language?: string;
   onSend: (message: string, audioBase64?: string) => Promise<SendResult>;
   onComplete: () => Promise<{ feedback: string }>;
   onExit: () => void;
@@ -58,6 +66,7 @@ const DrillChatSession = ({
   title,
   subtitle,
   turns: initialTurns,
+  language = 'en',
   onSend,
   onComplete,
   onExit,
@@ -73,18 +82,53 @@ const DrillChatSession = ({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
+  const [autoPlay, setAutoPlay] = useState(true);
+  const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const lastSpokenCount = useRef(initialTurns.length);
 
   const { isRecording, startRecording, stopRecording, audioBlob, audioUrl, clearRecording, formattedTime } =
     useAudioRecorder();
   const { speak, isPlaying, isLoading: ttsLoading } = useTTS();
+  const speechRecognition = useSpeechRecognition(language);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [turns, sending]);
 
+  // Auto-play new AI replies — off by default would feel dead for a
+  // conversation drill, but a toggle keeps it under the user's control.
+  useEffect(() => {
+    if (!autoPlay || turns.length <= lastSpokenCount.current) return;
+    const last = turns[turns.length - 1];
+    if (last.role === 'ASSISTANT') {
+      const idx = turns.length - 1;
+      setSpeakingIndex(idx);
+      speak(last.content, language).finally(() => setSpeakingIndex((cur) => (cur === idx ? null : cur)));
+    }
+    lastSpokenCount.current = turns.length;
+  }, [turns, autoPlay, speak, language]);
+
+  const speakTurn = (index: number, text: string) => {
+    setSpeakingIndex(index);
+    speak(text, language).finally(() => setSpeakingIndex((cur) => (cur === index ? null : cur)));
+  };
+
   const toggleMic = async () => {
     setMicError(null);
+    // Fast path: browser-native recognition, same approach as the real-time
+    // translator — transcribes locally with no upload, no server STT wait.
+    if (speechRecognition.supported) {
+      if (speechRecognition.isListening) {
+        speechRecognition.stop();
+      } else {
+        speechRecognition.start((finalText) => {
+          setMessage((prev) => (prev ? `${prev} ${finalText}` : finalText));
+        });
+      }
+      return;
+    }
+    // Fallback: record audio and let the server transcribe it.
     if (isRecording) {
       stopRecording();
       return;
@@ -115,11 +159,16 @@ const DrillChatSession = ({
       const res = await onSend(text.trim(), audioBase64);
       setTurns((prev) => {
         const next = [...prev];
-        // If it was a voice-only turn, swap the placeholder for the real transcript
+        const lastUser = next[next.length - 1];
         if (audioBase64 && res.transcribedText) {
-          next[next.length - 1] = { ...next[next.length - 1], content: res.transcribedText, confidence: res.confidence };
+          next[next.length - 1] = { ...lastUser, content: res.transcribedText, confidence: res.confidence };
+        } else if (res.grammarErrors?.length) {
+          next[next.length - 1] = { ...lastUser, grammarErrors: res.grammarErrors };
         }
-        return [...next, { role: 'ASSISTANT', content: res.reply }];
+        return [
+          ...next,
+          { role: 'ASSISTANT', content: res.reply, nativeSpeakerVersion: res.nativeSpeakerVersion },
+        ];
       });
     } catch (err: any) {
       setError(err?.friendlyMessage || err?.response?.data?.error || 'Could not send your message');
@@ -142,15 +191,23 @@ const DrillChatSession = ({
 
   return (
     <Stack spacing={4}>
-      <HStack justify="space-between">
+      <HStack justify="space-between" wrap="wrap" rowGap={2}>
         <Button size="sm" variant="ghost" leftIcon={<ArrowBackIcon />} color={inkSoft} onClick={onExit}>
           Back
         </Button>
-        {!feedback && (
-          <Button size="sm" variant="outline" borderColor={line} color={inkSoft} onClick={complete} isLoading={completing}>
-            {completeLabel}
-          </Button>
-        )}
+        <HStack spacing={4}>
+          <HStack spacing={2}>
+            <Text fontSize="xs" color={inkSoft} fontWeight="600">
+              Auto-play voice
+            </Text>
+            <Switch size="sm" isChecked={autoPlay} onChange={(e) => setAutoPlay(e.target.checked)} colorScheme="pink" />
+          </HStack>
+          {!feedback && (
+            <Button size="sm" variant="outline" borderColor={line} color={inkSoft} onClick={complete} isLoading={completing}>
+              {completeLabel}
+            </Button>
+          )}
+        </HStack>
       </HStack>
 
       <Box bg={card} borderRadius="xl" p={4}>
@@ -185,11 +242,16 @@ const DrillChatSession = ({
         </Box>
       ) : (
         <Box bg="white" border="1px solid" borderColor={line} borderRadius="2xl" p={4}>
-          <Stack spacing={3} maxH="420px" overflowY="auto" px={1}>
+          <Stack spacing={3} maxH="440px" overflowY="auto" px={1}>
             {turns.map((t, i) => (
               <Flex key={i} justify={t.role === 'USER' ? 'flex-end' : 'flex-start'}>
-                <Box bg={t.role === 'USER' ? ink : accentTint} color={t.role === 'USER' ? 'white' : ink} borderRadius="xl" px={4} py={2.5} maxW="80%">
-                  <Text fontSize="sm">{t.content}</Text>
+                <Box bg={t.role === 'USER' ? ink : accentTint} color={t.role === 'USER' ? 'white' : ink} borderRadius="xl" px={4} py={2.5} maxW="82%">
+                  {t.role === 'USER' && t.grammarErrors?.length ? (
+                    <GrammarHighlight text={t.content} errors={t.grammarErrors} color="white" />
+                  ) : (
+                    <Text fontSize="sm">{t.content}</Text>
+                  )}
+
                   <HStack spacing={2} mt={t.confidence != null || t.role === 'ASSISTANT' ? 1.5 : 0}>
                     {t.confidence != null && (
                       <Badge bg="rgba(255,255,255,0.25)" color="white" fontSize="9px" borderRadius="full">
@@ -205,11 +267,22 @@ const DrillChatSession = ({
                         h="18px"
                         variant="ghost"
                         color={sageDeep}
-                        isLoading={ttsLoading}
-                        onClick={() => speak(t.content, 'en')}
+                        isLoading={speakingIndex === i && (ttsLoading || isPlaying)}
+                        onClick={() => speakTurn(i, t.content)}
                       />
                     )}
                   </HStack>
+
+                  {t.role === 'ASSISTANT' && t.nativeSpeakerVersion && (
+                    <Box mt={2} pt={2} borderTop="1px solid rgba(46,31,38,0.12)">
+                      <Text fontSize="10px" fontWeight="700" color={sageDeep} letterSpacing="0.04em">
+                        MORE NATURAL WAY TO SAY IT
+                      </Text>
+                      <Text fontSize="xs" fontStyle="italic" color={ink}>
+                        "{t.nativeSpeakerVersion}"
+                      </Text>
+                    </Box>
+                  )}
                 </Box>
               </Flex>
             ))}
@@ -223,7 +296,24 @@ const DrillChatSession = ({
             <div ref={bottomRef} />
           </Stack>
 
-          {audioBlob ? (
+          {speechRecognition.isListening ? (
+            <HStack mt={3} bg={sageTint} borderRadius="xl" px={4} py={3} spacing={3}>
+              <IconButton
+                aria-label="Stop listening"
+                icon={<Icon as={FiSquare} />}
+                size="sm"
+                borderRadius="full"
+                bg={rose}
+                color="white"
+                onClick={toggleMic}
+              />
+              <Circle size="8px" bg={sageDeep} sx={{ animation: 'pulse 1.2s ease-in-out infinite' }} />
+              <Text fontSize="sm" color={ink} flex={1} noOfLines={1}>
+                {speechRecognition.interimText || 'Listening...'}
+              </Text>
+              <style>{`@keyframes pulse { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:0.4;transform:scale(1.4);} }`}</style>
+            </HStack>
+          ) : audioBlob ? (
             <HStack mt={3} bg={card} borderRadius="xl" p={2.5} spacing={3}>
               <IconButton
                 aria-label="Play recording"
