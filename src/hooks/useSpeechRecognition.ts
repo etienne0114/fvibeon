@@ -37,15 +37,20 @@ export function useSpeechRecognition(language: string) {
       recognition.continuous = false;
       recognition.maxAlternatives = 1;
 
-      let finalTranscript = '';
+      // Even with continuous=false, a natural pause mid-sentence can split
+      // recognition into multiple "final" segments in one session — joining
+      // them with `+=` (no separator) is what produced runs like "andYeah".
+      // Collecting each trimmed segment and `.join(' ')`-ing them keeps
+      // spacing correct regardless of how the browser chunks it.
+      const finalSegments: string[] = [];
       recognition.onresult = (event: SpeechRecognitionEvent) => {
         let interim = '';
         for (let i = event.resultIndex; i < event.results.length; i += 1) {
           const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) finalTranscript += transcript;
+          if (event.results[i].isFinal) finalSegments.push(transcript.trim());
           else interim += transcript;
         }
-        setInterimText(finalTranscript + interim);
+        setInterimText([...finalSegments, interim].filter(Boolean).join(' '));
       };
       recognition.onerror = () => {
         setIsListening(false);
@@ -53,7 +58,8 @@ export function useSpeechRecognition(language: string) {
       recognition.onend = () => {
         setIsListening(false);
         setInterimText('');
-        if (finalTranscript.trim()) onFinalRef.current?.(finalTranscript.trim());
+        const finalTranscript = finalSegments.join(' ').trim();
+        if (finalTranscript) onFinalRef.current?.(finalTranscript);
       };
 
       recognitionRef.current = recognition;

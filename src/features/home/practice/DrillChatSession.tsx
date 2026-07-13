@@ -122,8 +122,10 @@ const DrillChatSession = ({
       if (speechRecognition.isListening) {
         speechRecognition.stop();
       } else {
+        // Send the moment recognition finishes — a live conversation
+        // shouldn't need a second tap to confirm what you just said.
         speechRecognition.start((finalText) => {
-          setMessage((prev) => (prev ? `${prev} ${finalText}` : finalText));
+          send(finalText);
         });
       }
       return;
@@ -171,7 +173,12 @@ const DrillChatSession = ({
         ];
       });
     } catch (err: any) {
-      setError(err?.friendlyMessage || err?.response?.data?.error || 'Could not send your message');
+      // A failed send previously left a permanent, unexplained bubble in the
+      // chat. Pull it back out and restore the text so retrying is just
+      // pressing send again, not re-typing (or re-speaking) the message.
+      setTurns((prev) => prev.slice(0, -1));
+      if (!audioBase64) setMessage(text);
+      setError(err?.friendlyMessage || err?.response?.data?.error || 'Could not send your message. Please try again.');
     } finally {
       setSending(false);
     }
