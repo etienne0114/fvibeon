@@ -27,7 +27,7 @@ export interface AIReply {
   reply: string;
   grammarErrors?: GrammarError[];
   nativeSpeakerVersion?: string | null;
-  pronunciationScore?: number | null;
+  confidence?: number | null;
   transcribedText?: string | null;
 }
 
