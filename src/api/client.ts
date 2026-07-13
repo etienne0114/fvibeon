@@ -6,8 +6,11 @@ const TOKEN_KEY = 'learn_auth_token';
 const client = axios.create({
   baseURL: BASE_URL,
   // Without this, a hung request (dead connection, slow DB) leaves the UI on
-  // a loading skeleton forever instead of surfacing a retryable error.
-  timeout: 15000,
+  // a loading skeleton forever instead of surfacing a retryable error. Set
+  // just above the backend's own 20s request timeout so the backend's
+  // cleaner, more specific error gets a chance to arrive first — AI-generated
+  // content (quiz/roleplay/tech chat) routinely takes well over 15s.
+  timeout: 25000,
   headers: {
     "Content-Type": "application/json",
   },
