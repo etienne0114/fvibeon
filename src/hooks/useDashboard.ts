@@ -53,6 +53,7 @@ export interface DashboardPayload {
   weeklyActivity: WeeklyActivityDay[];
   achievements: AchievementItem[];
   learningGoals: { goals: unknown[]; timeframe: string };
+  partial?: boolean;
   generatedAt: string;
 }
 
@@ -69,26 +70,39 @@ export function useDashboard(options: UseDashboardOptions = {}) {
   const [data, setData] = useState<DashboardPayload | null>(dashboardCache);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryable, setRetryable] = useState(false);
 
-  const load = useCallback(async () => {
-    if (!enabled) {
-      return;
-    }
-    try {
-      setIsLoading(true);
-      const response = await fetchDashboard();
-      const payload: DashboardPayload | null = response?.data ?? null;
-      if (payload) {
-        dashboardCache = payload;
-        setData(payload);
+  const load = useCallback(
+    async (isAutoRetry = false) => {
+      if (!enabled) {
+        return;
       }
-      setError(null);
-    } catch (err: any) {
-      setError(err?.response?.data?.error || 'Failed to load dashboard');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [enabled]);
+      try {
+        setIsLoading(true);
+        const response = await fetchDashboard();
+        const payload: DashboardPayload | null = response?.data ?? null;
+        if (payload) {
+          dashboardCache = payload;
+          setData(payload);
+        }
+        setError(null);
+        setRetryable(false);
+      } catch (err: any) {
+        const message = err?.friendlyMessage || err?.response?.data?.error || 'Failed to load dashboard';
+        setError(message);
+        setRetryable(Boolean(err?.retryable));
+        // One quiet auto-retry for transient blips (dropped connection,
+        // pooler hiccup) — most resolve within a couple of seconds, so the
+        // user never has to notice or click anything.
+        if (err?.retryable && !isAutoRetry) {
+          setTimeout(() => load(true), 2500);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [enabled],
+  );
 
   useEffect(() => {
     load();
@@ -100,6 +114,7 @@ export function useDashboard(options: UseDashboardOptions = {}) {
     generatedAt: data?.generatedAt,
     isLoading,
     error,
-    refetch: load,
+    retryable,
+    refetch: () => load(),
   };
 }

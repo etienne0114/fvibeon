@@ -135,6 +135,8 @@ interface DashboardProps {
   data: DashboardPayload | null;
   isLoading: boolean;
   error?: string | null;
+  retryable?: boolean;
+  onRetry?: () => void;
   username?: string;
   onOpenCourse: (courseId: string) => void;
   onBrowseCourses: () => void;
@@ -147,7 +149,7 @@ const quickActions = [
   { id: 'chat', label: 'Ask the tutor', icon: FiMessageCircle, tile: rose },
 ];
 
-const Dashboard = ({ data, isLoading, error, username, onOpenCourse, onBrowseCourses, onGoToSection }: DashboardProps) => {
+const Dashboard = ({ data, isLoading, error, retryable, onRetry, username, onOpenCourse, onBrowseCourses, onGoToSection }: DashboardProps) => {
   const summary = data?.summary;
   const cl = data?.continueLearning;
   const hours = useMemo(() => {
@@ -172,9 +174,30 @@ const Dashboard = ({ data, isLoading, error, username, onOpenCourse, onBrowseCou
   return (
     <Stack spacing={{ base: 5, md: 7 }}>
       {error && (
-        <Alert status="error" borderRadius="xl" fontSize="sm">
-          <AlertIcon />
-          {error}
+        <Alert status="error" borderRadius="xl" fontSize="sm" justifyContent="space-between">
+          <HStack>
+            <AlertIcon />
+            <Text>{error}</Text>
+          </HStack>
+          {retryable && onRetry && (
+            <Button size="xs" variant="outline" colorScheme="red" onClick={onRetry} isLoading={isLoading}>
+              Try again
+            </Button>
+          )}
+        </Alert>
+      )}
+
+      {!error && data?.partial && (
+        <Alert status="warning" borderRadius="xl" fontSize="sm" justifyContent="space-between">
+          <HStack>
+            <AlertIcon />
+            <Text>Some numbers below may be out of date — reconnecting to refresh them.</Text>
+          </HStack>
+          {onRetry && (
+            <Button size="xs" variant="outline" colorScheme="orange" onClick={onRetry} isLoading={isLoading}>
+              Refresh
+            </Button>
+          )}
         </Alert>
       )}
 

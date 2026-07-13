@@ -43,7 +43,7 @@ const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
   const [activeSection, setActiveSection] = useState('dashboard');
   const [openCourseId, setOpenCourseId] = useState<string | null>(null);
   const user = useMe(Boolean(token));
-  const { data, isLoading, error, refetch } = useDashboard({ enabled: Boolean(token) });
+  const { data, isLoading, error, retryable, refetch } = useDashboard({ enabled: Boolean(token) });
   const { message, setMessage, helperText, sendMessage, isLoading: isChatting } = useTutorChat();
 
   const openCourse = (courseId: string | null) => {
@@ -92,6 +92,8 @@ const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
             data={data}
             isLoading={isLoading}
             error={error}
+            retryable={retryable}
+            onRetry={refetch}
             username={user?.firstName || user?.username}
             onOpenCourse={openCourse}
             onBrowseCourses={() => openCourse(null)}
