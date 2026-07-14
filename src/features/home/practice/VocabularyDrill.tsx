@@ -91,13 +91,29 @@ const fromQueueEntry = (e: VocabularyEntry): DisplayWord => ({
 const fromSearchResult = (d: DictionaryDefinition, language: string): DisplayWord => {
   const meaning = d.meanings?.[0];
   const def = meaning?.definitions?.[0];
+
+  // Synonyms/antonyms live wherever a given meaning happens to carry them —
+  // often not the first one (e.g. "happy" as a noun has none, but its
+  // adjective sense further down the list does). Pool every meaning and
+  // definition instead of only looking at meanings[0].
+  const pooledSynonyms: string[] = [];
+  const pooledAntonyms: string[] = [];
+  d.meanings?.forEach((m) => {
+    if (m.synonyms) pooledSynonyms.push(...m.synonyms);
+    if (m.antonyms) pooledAntonyms.push(...m.antonyms);
+    m.definitions?.forEach((mDef) => {
+      if (mDef.synonyms) pooledSynonyms.push(...mDef.synonyms);
+      if (mDef.antonyms) pooledAntonyms.push(...mDef.antonyms);
+    });
+  });
+
   return {
     word: d.word,
     definition: def?.definition || '',
     partOfSpeech: meaning?.partOfSpeech || '',
     examples: [def?.example, ...(d.examples || [])].filter(Boolean) as string[],
-    synonyms: dedupe([...(d.synonyms || []), ...(def?.synonyms || []), ...(meaning?.synonyms || [])]),
-    antonyms: dedupe([...(d.antonyms || []), ...(def?.antonyms || []), ...(meaning?.antonyms || [])]),
+    synonyms: dedupe([...(d.synonyms || []), ...pooledSynonyms]),
+    antonyms: dedupe([...(d.antonyms || []), ...pooledAntonyms]),
     language,
   };
 };
