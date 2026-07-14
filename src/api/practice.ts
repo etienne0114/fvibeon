@@ -8,6 +8,8 @@ export interface VocabularyEntry {
   difficulty: number;
   language: string;
   examples: string[];
+  synonyms?: string[];
+  antonyms?: string[];
   masteryLevel: number;
   streak: number;
   nextReviewAt: string | null;

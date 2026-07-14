@@ -6,6 +6,7 @@ import {
   Box,
   Button,
   Circle,
+  Divider,
   Flex,
   HStack,
   Icon,
@@ -23,8 +24,11 @@ import {
   SimpleGrid,
   Spinner,
   Stack,
+  Tag,
   Text,
   Tooltip,
+  Wrap,
+  WrapItem,
   useToast,
 } from '@chakra-ui/react';
 import { CheckIcon, CloseIcon } from '@chakra-ui/icons';
@@ -63,16 +67,22 @@ interface DisplayWord {
   definition: string;
   partOfSpeech: string;
   examples: string[];
+  synonyms: string[];
+  antonyms: string[];
   language: string;
   isNew?: boolean;
   masteryLevel?: number;
 }
+
+const dedupe = (values: (string | undefined)[]) => [...new Set(values.filter(Boolean) as string[])];
 
 const fromQueueEntry = (e: VocabularyEntry): DisplayWord => ({
   word: e.word,
   definition: e.definition,
   partOfSpeech: e.partOfSpeech,
   examples: e.examples || [],
+  synonyms: e.synonyms || [],
+  antonyms: e.antonyms || [],
   language: e.language,
   isNew: e.isNew,
   masteryLevel: e.masteryLevel,
@@ -86,6 +96,8 @@ const fromSearchResult = (d: DictionaryDefinition, language: string): DisplayWor
     definition: def?.definition || '',
     partOfSpeech: meaning?.partOfSpeech || '',
     examples: [def?.example, ...(d.examples || [])].filter(Boolean) as string[],
+    synonyms: dedupe([...(d.synonyms || []), ...(def?.synonyms || []), ...(meaning?.synonyms || [])]),
+    antonyms: dedupe([...(d.antonyms || []), ...(def?.antonyms || []), ...(meaning?.antonyms || [])]),
     language,
   };
 };
@@ -121,8 +133,17 @@ const VocabularyDrill = () => {
   // grading controls and progress make no sense while browsing a search hit.
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResult, setSearchResult] = useState<DictionaryDefinition | null>(null);
+  // The language a search hit was actually looked up in — distinct from the
+  // study-language tab, because clicking a synonym/antonym chip always
+  // looks it up in English (that's the language the free dictionary API
+  // and its synonym/antonym lists are sourced in) regardless of which tab
+  // is active.
+  const [searchResultLang, setSearchResultLang] = useState('en');
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  // Which synonym/antonym chip is currently being looked up, so only that
+  // one chip shows a spinner instead of the whole card looking busy.
+  const [pendingChip, setPendingChip] = useState<string | null>(null);
 
   // Translate — a lightweight on-demand popover, not a persistent language
   // switch, so it never fights with the study-language tabs above it.
@@ -154,7 +175,7 @@ const VocabularyDrill = () => {
 
   const current = queue[index];
   const display: DisplayWord | null = searchResult
-    ? fromSearchResult(searchResult, language)
+    ? fromSearchResult(searchResult, searchResultLang)
     : current
       ? fromQueueEntry(current)
       : null;
@@ -167,29 +188,44 @@ const VocabularyDrill = () => {
 
   const exitSearch = () => {
     setSearchResult(null);
+    setSearchResultLang('en');
     setSearchError(null);
     setSearchQuery('');
   };
 
-  const runSearch = async () => {
-    const q = searchQuery.trim();
+  const performLookup = async (rawWord: string, lang: string) => {
+    const q = rawWord.trim();
     if (!q) return;
     try {
       setSearching(true);
       setSearchError(null);
-      const results = await searchVocabulary(q, language, 1);
+      const results = await searchVocabulary(q, lang, 1);
       if (!results.length) {
         setSearchError(`No definition found for "${q}"`);
         setSearchResult(null);
         return;
       }
       setSearchResult(results[0]);
+      setSearchResultLang(lang);
+      setSearchQuery(q);
+      // "Automatically show the details" — a looked-up word reveals
+      // immediately, no second click needed.
       setRevealed(true);
     } catch (err: any) {
       setSearchError(err?.friendlyMessage || err?.response?.data?.error || 'Search failed. Please try again.');
     } finally {
       setSearching(false);
     }
+  };
+
+  const runSearch = () => performLookup(searchQuery, language);
+
+  // Synonyms/antonyms are always sourced in English — look them up there
+  // regardless of which study-language tab happens to be active.
+  const lookupChip = async (word: string) => {
+    setPendingChip(word);
+    await performLookup(word, 'en');
+    setPendingChip(null);
   };
 
   const goPrev = () => {
@@ -405,25 +441,100 @@ const VocabularyDrill = () => {
               </HStack>
 
               {revealed ? (
-                <Stack spacing={3} maxW="480px" mx="auto">
-                  <Text color={ink} fontSize="lg">
-                    {display.definition || 'No definition available.'}
-                  </Text>
-                  {display.partOfSpeech && (
-                    <Text fontSize="xs" color={inkSoft} textTransform="uppercase" letterSpacing="0.05em">
-                      {display.partOfSpeech}
+                <Stack spacing={4} maxW="480px" mx="auto" textAlign="left">
+                  <Stack spacing={1} textAlign="center">
+                    <Text color={ink} fontSize="lg">
+                      {display.definition || 'No definition available.'}
                     </Text>
-                  )}
+                    {display.partOfSpeech && (
+                      <Text fontSize="xs" color={inkSoft} textTransform="uppercase" letterSpacing="0.05em">
+                        {display.partOfSpeech}
+                      </Text>
+                    )}
+                  </Stack>
+
                   {display.examples?.length > 0 && (
-                    <Box bg={card} borderRadius="xl" p={4} textAlign="left">
-                      <Text fontSize="xs" fontWeight="700" color={inkSoft} mb={1}>
-                        EXAMPLE
+                    <Box bg={card} borderRadius="xl" p={4}>
+                      <Text fontSize="xs" fontWeight="700" color={inkSoft} mb={2} textTransform="uppercase" letterSpacing="0.05em">
+                        {display.examples.length > 1 ? 'Examples' : 'Example'}
                       </Text>
-                      <Text fontSize="sm" color={ink} fontStyle="italic">
-                        "{display.examples[0]}"
-                      </Text>
+                      <Stack spacing={1.5}>
+                        {display.examples.slice(0, 3).map((ex, i) => (
+                          <Text key={i} fontSize="sm" color={ink} fontStyle="italic">
+                            "{ex}"
+                          </Text>
+                        ))}
+                      </Stack>
                     </Box>
                   )}
+
+                  {display.synonyms.length > 0 && (
+                    <Box>
+                      <Text fontSize="xs" fontWeight="700" color={inkSoft} mb={2} textTransform="uppercase" letterSpacing="0.05em">
+                        Synonyms
+                      </Text>
+                      <Wrap spacing={2}>
+                        {display.synonyms.slice(0, 8).map((s) => (
+                          <WrapItem key={s}>
+                            <Tag
+                              as="button"
+                              type="button"
+                              onClick={() => lookupChip(s)}
+                              isTruncated
+                              cursor="pointer"
+                              size="sm"
+                              borderRadius="full"
+                              bg={sageTint}
+                              color={sageDeep}
+                              fontWeight="600"
+                              opacity={searching && pendingChip !== s ? 0.5 : 1}
+                              pointerEvents={searching ? 'none' : 'auto'}
+                              _hover={{ bg: sage, color: 'white' }}
+                              transition="all 0.15s"
+                            >
+                              {pendingChip === s && <Spinner size="xs" mr={1.5} />}
+                              {s}
+                            </Tag>
+                          </WrapItem>
+                        ))}
+                      </Wrap>
+                    </Box>
+                  )}
+
+                  {display.antonyms.length > 0 && (
+                    <Box>
+                      <Text fontSize="xs" fontWeight="700" color={inkSoft} mb={2} textTransform="uppercase" letterSpacing="0.05em">
+                        Opposites
+                      </Text>
+                      <Wrap spacing={2}>
+                        {display.antonyms.slice(0, 8).map((a) => (
+                          <WrapItem key={a}>
+                            <Tag
+                              as="button"
+                              type="button"
+                              onClick={() => lookupChip(a)}
+                              isTruncated
+                              cursor="pointer"
+                              size="sm"
+                              borderRadius="full"
+                              bg={roseTint}
+                              color={roseDeep}
+                              fontWeight="600"
+                              opacity={searching && pendingChip !== a ? 0.5 : 1}
+                              pointerEvents={searching ? 'none' : 'auto'}
+                              _hover={{ bg: rose, color: 'white' }}
+                              transition="all 0.15s"
+                            >
+                              {pendingChip === a && <Spinner size="xs" mr={1.5} />}
+                              {a}
+                            </Tag>
+                          </WrapItem>
+                        ))}
+                      </Wrap>
+                    </Box>
+                  )}
+
+                  <Divider borderColor={line} />
 
                   <Menu placement="bottom">
                     <Tooltip label="Translate this definition" placement="top" openDelay={200}>
