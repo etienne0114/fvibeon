@@ -111,7 +111,10 @@ const fromSearchResult = (d: DictionaryDefinition, language: string): DisplayWor
     word: d.word,
     definition: def?.definition || '',
     partOfSpeech: meaning?.partOfSpeech || '',
-    examples: [def?.example, ...(d.examples || [])].filter(Boolean) as string[],
+    // d.examples is already the backend's aggregate across every meaning's
+    // definitions, which can include this exact same def.example string —
+    // dedupe or the same sentence shows up twice.
+    examples: dedupe([def?.example, ...(d.examples || [])]),
     synonyms: dedupe([...(d.synonyms || []), ...pooledSynonyms]),
     antonyms: dedupe([...(d.antonyms || []), ...pooledAntonyms]),
     language,
