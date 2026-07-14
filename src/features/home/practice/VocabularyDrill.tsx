@@ -32,7 +32,7 @@ import {
   useToast,
 } from '@chakra-ui/react';
 import { CheckIcon, CloseIcon } from '@chakra-ui/icons';
-import { FiVolume2, FiSearch, FiX, FiChevronLeft, FiChevronRight, FiGlobe } from 'react-icons/fi';
+import { FiVolume2, FiSearch, FiX, FiChevronLeft, FiChevronRight, FiGlobe, FiMic, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 import {
   fetchVocabularyQueue,
   markVocabularyResult,
@@ -42,6 +42,7 @@ import {
 } from '../../../api/practice';
 import { searchVocabulary, translateDictionaryText, DictionaryDefinition } from '../../../api/dictionary';
 import { useTranslator } from '../../../hooks/useTranslator';
+import { useSpeechRecognition } from '../../../hooks/useSpeechRecognition';
 import { ink, inkSoft, rose, roseDeep, card, line, serif, sage, sageDeep, roseTint, sageTint, amber } from '../../../theme/brand';
 
 // English is what most users study first — it should be the tab you land on,
@@ -58,6 +59,43 @@ const speak = (text: string, lang: string) => {
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = lang === 'fr' ? 'fr-FR' : 'en-US';
   window.speechSynthesis.speak(utter);
+};
+
+// Longest-common-subsequence diff between the correct word and what speech
+// recognition heard the user say. Returns the CORRECT word's characters
+// tagged matched/unmatched in order, so a mispronunciation highlights
+// exactly which letters were missing instead of just saying "wrong".
+const diffPronunciation = (correct: string, heard: string): { char: string; matched: boolean }[] => {
+  const a = correct.toLowerCase();
+  const b = heard.toLowerCase();
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i += 1) {
+    for (let j = 1; j <= n; j += 1) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  const result: { char: string; matched: boolean }[] = [];
+  let i = m;
+  let j = n;
+  while (i > 0 && j > 0) {
+    if (a[i - 1] === b[j - 1]) {
+      result.unshift({ char: correct[i - 1], matched: true });
+      i -= 1;
+      j -= 1;
+    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+      result.unshift({ char: correct[i - 1], matched: false });
+      i -= 1;
+    } else {
+      j -= 1;
+    }
+  }
+  while (i > 0) {
+    result.unshift({ char: correct[i - 1], matched: false });
+    i -= 1;
+  }
+  return result;
 };
 
 // A single shape the flashcard renders, whether the word came from the
@@ -170,6 +208,10 @@ const VocabularyDrill = () => {
   const [translated, setTranslated] = useState<string | null>(null);
   const [translating, setTranslating] = useState(false);
 
+  // Pronunciation practice — what the mic last heard for the word on
+  // screen, and whether it matched.
+  const [pronunciationResult, setPronunciationResult] = useState<{ heard: string; correct: boolean } | null>(null);
+
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async (lang: string) => {
@@ -199,11 +241,34 @@ const VocabularyDrill = () => {
       ? fromQueueEntry(current)
       : null;
 
-  // Any time the word on screen changes, last word's translation is stale.
+  // Reuses the same browser-native Web Speech API path as the real-time
+  // translator and roleplay chat — instant, no network round trip.
+  const speechRecognition = useSpeechRecognition(display?.language || language);
+
+  // Any time the word on screen changes, last word's translation/pronunciation
+  // result is stale.
   useEffect(() => {
     setTranslateTarget(null);
     setTranslated(null);
+    setPronunciationResult(null);
   }, [display?.word, searchResult]);
+
+  const practicePronunciation = () => {
+    if (!speechRecognition.supported || !display) return;
+    if (speechRecognition.isListening) {
+      speechRecognition.stop();
+      return;
+    }
+    setPronunciationResult(null);
+    speechRecognition.start((heard) => {
+      const normalize = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9\s]/gi, '');
+      const correct = normalize(heard) === normalize(display.word);
+      setPronunciationResult({ heard, correct });
+      // Model the correct pronunciation right away when they got it wrong,
+      // instead of making them hunt for the separate Listen button.
+      if (!correct) speak(display.word, display.language);
+    });
+  };
 
   const exitSearch = () => {
     setSearchResult(null);
@@ -457,7 +522,82 @@ const VocabularyDrill = () => {
                 >
                   <Icon as={FiVolume2} boxSize={4} />
                 </Circle>
+                {speechRecognition.supported && (
+                  <Tooltip label="Practice saying this word" placement="top" openDelay={200}>
+                    <Circle
+                      as="button"
+                      size="40px"
+                      bg={
+                        speechRecognition.isListening
+                          ? rose
+                          : pronunciationResult
+                            ? pronunciationResult.correct
+                              ? sageTint
+                              : roseTint
+                            : card
+                      }
+                      color={
+                        speechRecognition.isListening
+                          ? 'white'
+                          : pronunciationResult
+                            ? pronunciationResult.correct
+                              ? sageDeep
+                              : roseDeep
+                            : inkSoft
+                      }
+                      onClick={practicePronunciation}
+                      _hover={{ bg: speechRecognition.isListening ? roseDeep : sage, color: 'white' }}
+                      transition="all 0.15s"
+                      aria-label={speechRecognition.isListening ? 'Stop recording' : 'Practice pronunciation'}
+                      flexShrink={0}
+                    >
+                      <Icon as={FiMic} boxSize={4} />
+                    </Circle>
+                  </Tooltip>
+                )}
               </HStack>
+
+              {speechRecognition.isListening && (
+                <HStack justify="center" spacing={2} mb={3}>
+                  <Circle size="8px" bg={rose} sx={{ animation: 'vocabPulse 1.2s ease-in-out infinite' }} />
+                  <Text fontSize="xs" color={inkSoft} fontWeight="600">
+                    Listening — say "{display.word}"
+                  </Text>
+                  <style>{`@keyframes vocabPulse { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:0.4;transform:scale(1.4);} }`}</style>
+                </HStack>
+              )}
+
+              {pronunciationResult && !speechRecognition.isListening && (
+                <Stack spacing={1.5} align="center" mb={3}>
+                  <HStack spacing={2}>
+                    <Icon
+                      as={pronunciationResult.correct ? FiCheckCircle : FiXCircle}
+                      color={pronunciationResult.correct ? sageDeep : roseDeep}
+                      boxSize={4}
+                    />
+                    <Text fontSize="sm" fontWeight="700" color={pronunciationResult.correct ? sageDeep : roseDeep}>
+                      {pronunciationResult.correct ? 'Great pronunciation!' : `Heard "${pronunciationResult.heard}" — try again`}
+                    </Text>
+                  </HStack>
+                  {!pronunciationResult.correct && (
+                    <HStack spacing="1px" flexWrap="wrap" justify="center" maxW="90%">
+                      {diffPronunciation(display.word, pronunciationResult.heard).map((d, i) => (
+                        <Text
+                          key={i}
+                          as="span"
+                          fontSize="md"
+                          fontWeight="700"
+                          fontFamily={serif}
+                          color={d.matched ? sageDeep : roseDeep}
+                          textDecoration={d.matched ? 'none' : 'underline'}
+                        >
+                          {d.char}
+                        </Text>
+                      ))}
+                    </HStack>
+                  )}
+                </Stack>
+              )}
 
               {revealed ? (
                 <Stack spacing={4} maxW="480px" mx="auto" textAlign="left">
