@@ -1,8 +1,9 @@
 import { lazy, Suspense, useState } from 'react';
-import { Box, Skeleton, Stack, Text } from '@chakra-ui/react';
+import { Box, Skeleton, Stack, Text, useDisclosure } from '@chakra-ui/react';
 import HomeShell from '../../home/HomeShell';
 import Dashboard from '../../home/Dashboard';
 import CoursesView from '../../home/CoursesView';
+import ProfileModal from '../../home/profile/ProfileModal';
 
 // Heavy, rarely-first-visited panels load on demand to keep the initial
 // bundle (and first paint) small.
@@ -41,8 +42,9 @@ const PanelSurface = ({ title, children }: { title?: string; children: React.Rea
 const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
   const [activeSection, setActiveSection] = useState('dashboard');
   const [openCourseId, setOpenCourseId] = useState<string | null>(null);
-  const user = useMe(Boolean(token));
+  const { user, refetchUser } = useMe(Boolean(token));
   const { data, isLoading, error, retryable, refetch } = useDashboard({ enabled: Boolean(token) });
+  const { isOpen: isProfileOpen, onOpen: onOpenProfile, onClose: onCloseProfile } = useDisclosure();
 
   const openCourse = (courseId: string | null) => {
     setOpenCourseId(courseId);
@@ -105,18 +107,31 @@ const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
   };
 
   return (
-    <HomeShell
-      activeSection={activeSection}
-      onSectionChange={(id) => {
-        setActiveSection(id);
-        if (id !== 'courses') setOpenCourseId(null);
-      }}
-      username={user?.firstName || user?.username}
-      streakDays={data?.summary?.streakDays ?? 0}
-      onLogout={onLogout}
-    >
-      <Suspense fallback={<PanelFallback />}>{renderSection()}</Suspense>
-    </HomeShell>
+    <>
+      <HomeShell
+        activeSection={activeSection}
+        onSectionChange={(id) => {
+          setActiveSection(id);
+          if (id !== 'courses') setOpenCourseId(null);
+        }}
+        username={user?.firstName || user?.username}
+        streakDays={data?.summary?.streakDays ?? 0}
+        onLogout={onLogout}
+        onOpenProfile={onOpenProfile}
+      >
+        <Suspense fallback={<PanelFallback />}>{renderSection()}</Suspense>
+      </HomeShell>
+      <ProfileModal
+        isOpen={isProfileOpen}
+        onClose={onCloseProfile}
+        user={user}
+        token={token}
+        dashboardSummary={data?.summary}
+        achievementsUnlocked={data?.achievements?.length ?? 0}
+        onLogout={onLogout}
+        onUserUpdated={refetchUser}
+      />
+    </>
   );
 };
 

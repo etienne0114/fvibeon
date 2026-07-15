@@ -55,6 +55,11 @@ export async function updateProfile(payload: ProfilePayload, token: string) {
   return response.data as { success: boolean; user: AuthResponse['user'] };
 }
 
+export async function changePassword(payload: { currentPassword: string; newPassword: string }) {
+  const response = await client.post('/auth/change-password', payload);
+  return response.data as { success: boolean };
+}
+
 export async function login(payload: { email: string; password: string }) {
   const response = await client.post('/auth/login', payload);
   return response.data as { success: boolean } & AuthResponse;

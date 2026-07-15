@@ -9,10 +9,6 @@ import {
   HStack,
   Icon,
   IconButton,
-  Menu,
-  MenuButton,
-  MenuItem,
-  MenuList,
   Stack,
   Text,
   useDisclosure,
@@ -27,7 +23,6 @@ import {
   FiTarget,
   FiAward,
   FiLogOut,
-  FiChevronDown,
 } from 'react-icons/fi';
 import { ink, inkSoft, rose, cream, line, serif, roseTint, sageTint } from '../../theme/brand';
 
@@ -53,6 +48,7 @@ interface HomeShellProps {
   username?: string;
   streakDays?: number;
   onLogout?: () => void;
+  onOpenProfile?: () => void;
   children: React.ReactNode;
 }
 
@@ -89,7 +85,7 @@ const NavItem = ({
   </HStack>
 );
 
-const HomeShell = ({ activeSection, onSectionChange, username, streakDays = 0, onLogout, children }: HomeShellProps) => {
+const HomeShell = ({ activeSection, onSectionChange, username, streakDays = 0, onLogout, onOpenProfile, children }: HomeShellProps) => {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const activeTitle = HOME_SECTIONS.find((s) => s.id === activeSection)?.title ?? 'Dashboard';
 
@@ -184,24 +180,14 @@ const HomeShell = ({ activeSection, onSectionChange, username, streakDays = 0, o
                 day streak
               </Text>
             </HStack>
-            <Menu>
-              <MenuButton>
-                <HStack spacing={2}>
-                  <Circle size="34px" bg={roseTint} color={rose} fontWeight="700" fontSize="sm">
-                    {(username || 'U').charAt(0).toUpperCase()}
-                  </Circle>
-                  <Text fontSize="sm" fontWeight="600" color={ink} display={{ base: 'none', md: 'block' }}>
-                    {username || 'Learner'}
-                  </Text>
-                  <Icon as={FiChevronDown} boxSize={3.5} color={inkSoft} display={{ base: 'none', md: 'block' }} />
-                </HStack>
-              </MenuButton>
-              <MenuList borderColor={line}>
-                <MenuItem icon={<FiLogOut />} onClick={onLogout}>
-                  Sign out
-                </MenuItem>
-              </MenuList>
-            </Menu>
+            <HStack as="button" onClick={onOpenProfile} spacing={2} aria-label="Open profile">
+              <Circle size="34px" bg={roseTint} color={rose} fontWeight="700" fontSize="sm">
+                {(username || 'U').charAt(0).toUpperCase()}
+              </Circle>
+              <Text fontSize="sm" fontWeight="600" color={ink} display={{ base: 'none', md: 'block' }}>
+                {username || 'Learner'}
+              </Text>
+            </HStack>
           </HStack>
         </Flex>
 
