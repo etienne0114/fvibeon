@@ -198,9 +198,9 @@ const ProfileModal = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} isCentered size={{ base: 'full', sm: 'xl', md: '2xl' }} scrollBehavior="inside">
+    <Modal isOpen={isOpen} onClose={onClose} isCentered size={{ base: 'full', md: '2xl' }} scrollBehavior="inside">
       <ModalOverlay bg="rgba(46,31,38,0.55)" backdropFilter="blur(2px)" />
-      <ModalContent borderRadius={{ base: 0, sm: '2xl' }} overflow="hidden" maxH={{ base: '100vh', sm: '620px' }}>
+      <ModalContent borderRadius={{ base: 0, md: '2xl' }} overflow="hidden" maxH={{ base: '100vh', md: '620px' }}>
         <ModalCloseButton color={{ base: 'white', md: ink }} zIndex={2} top={3} right={3} />
         <ModalBody p={0}>
           <Flex direction={{ base: 'column', md: 'row' }} minH={{ md: '620px' }}>
@@ -227,7 +227,37 @@ const ProfileModal = ({
                 </Box>
               </HStack>
 
-              <Stack spacing={1} flex={1} direction={{ base: 'row', md: 'column' }} overflowX={{ base: 'auto', md: 'visible' }}>
+              {/* Mobile: an even 4-column grid so every tab is always visible
+                  with no horizontal scroll to discover (a scrolling row cut
+                  "Security" off-screen with no visible affordance to reach it).
+                  Desktop: the familiar vertical sidebar list. */}
+              <SimpleGrid columns={4} spacing={1} display={{ base: 'grid', md: 'none' }}>
+                {NAV.map((item) => {
+                  const active = item.id === section;
+                  return (
+                    <Stack
+                      key={item.id}
+                      as="button"
+                      onClick={() => setSection(item.id)}
+                      spacing={1}
+                      align="center"
+                      py={2}
+                      px={1}
+                      borderRadius="lg"
+                      bg={active ? 'rgba(255,255,255,0.1)' : 'transparent'}
+                      color={active ? 'white' : '#B9A49A'}
+                      transition="all 0.15s ease"
+                    >
+                      <Icon as={item.icon} boxSize={4} />
+                      <Text fontSize="10px" fontWeight={active ? '700' : '500'} whiteSpace="nowrap">
+                        {item.label}
+                      </Text>
+                    </Stack>
+                  );
+                })}
+              </SimpleGrid>
+
+              <Stack spacing={1} flex={1} display={{ base: 'none', md: 'flex' }}>
                 {NAV.map((item) => {
                   const active = item.id === section;
                   return (
