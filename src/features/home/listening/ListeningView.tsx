@@ -9,6 +9,8 @@ import {
   Flex,
   HStack,
   Icon,
+  IconButton,
+  Input,
   Skeleton,
   SimpleGrid,
   Stack,
@@ -16,7 +18,7 @@ import {
   Textarea,
   useToast,
 } from '@chakra-ui/react';
-import { FiVolume2, FiMic, FiChevronRight } from 'react-icons/fi';
+import { FiVolume2, FiMic, FiChevronRight, FiChevronLeft, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 import { fetchSkillPassage, submitSkillSession, fetchSkillStats, SkillPassage, SkillStats } from '../../../api/reading';
 import { useSpeechRecognition } from '../../../hooks/useSpeechRecognition';
 import { useTranslator } from '../../../hooks/useTranslator';
@@ -31,6 +33,8 @@ const LANGS = [
 ];
 
 const LEVEL_LABEL: Record<string, string> = { BEGINNER: 'Beginner', INTERMEDIATE: 'Intermediate', ADVANCED: 'Advanced' };
+
+const speechLocale = (lang: string) => (lang === 'fr' ? 'fr-FR' : lang === 'rw' ? 'rw-RW' : 'en-US');
 
 const StatPill = ({ label, value }: { label: string; value: string | number }) => (
   <Box bg={card} border="1px solid" borderColor={line} borderRadius="xl" px={4} py={2.5} textAlign="center" flex={1}>
@@ -48,6 +52,11 @@ interface DictationResult {
   accuracy: number;
 }
 
+interface WordDictation {
+  typed: string;
+  matched: boolean;
+}
+
 const ListeningView = () => {
   const toast = useToast();
   const { speakText } = useTranslator();
@@ -57,17 +66,30 @@ const ListeningView = () => {
   const [stats, setStats] = useState<SkillStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // PARAGRAPH mode
   const [hasPlayed, setHasPlayed] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [result, setResult] = useState<DictationResult | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   // The mic "repeat it back" step is ungraded practice, separate from the
   // typed dictation that's actually submitted for accuracy/level tracking.
   const [spokenResult, setSpokenResult] = useState<WordDiffToken[] | null>(null);
 
+  // WORDS mode (beginner) — one word at a time, Prev/Next, results
+  // accumulated until the last word is checked.
+  const [wordIndex, setWordIndex] = useState(0);
+  const [wordPlayed, setWordPlayed] = useState<boolean[]>([]);
+  const [wordInput, setWordInput] = useState('');
+  const [wordDictation, setWordDictation] = useState<(WordDictation | null)[]>([]);
+  const [wordSpoken, setWordSpoken] = useState<(WordDiffToken[] | null)[]>([]);
+
   const speechRecognition = useSpeechRecognition(language);
 
-  const referenceText = passage?.contentType === 'WORDS' ? (passage.words || []).join(' ') : passage?.text || '';
+  const isWords = passage?.contentType === 'WORDS';
+  const words = passage?.words || [];
+  const currentWord = words[wordIndex] || '';
+  const referenceText = isWords ? currentWord : passage?.text || '';
 
   const load = useCallback(async (lang: string) => {
     try {
@@ -77,8 +99,14 @@ const ListeningView = () => {
       setTranscript('');
       setResult(null);
       setSpokenResult(null);
+      setWordIndex(0);
+      setWordInput('');
       const [p, s] = await Promise.all([fetchSkillPassage('LISTENING', lang), fetchSkillStats('LISTENING', lang)]);
       setPassage(p);
+      const count = (p.words || []).length;
+      setWordPlayed(new Array(count).fill(false));
+      setWordDictation(new Array(count).fill(null));
+      setWordSpoken(new Array(count).fill(null));
       setStats(s);
     } catch (err: any) {
       setError(err?.friendlyMessage || err?.response?.data?.error || 'Could not load a listening passage');
@@ -91,16 +119,39 @@ const ListeningView = () => {
     load(language);
   }, [language, load]);
 
+  useEffect(() => {
+    setWordInput(wordDictation[wordIndex]?.typed || '');
+  }, [wordIndex, wordDictation]);
+
   const play = () => {
     if (!referenceText) return;
-    setHasPlayed(true);
-    speakText(referenceText, language === 'fr' ? 'fr-FR' : language === 'rw' ? 'rw-RW' : 'en-US');
+    speakText(referenceText, speechLocale(language));
+    if (isWords) {
+      setWordPlayed((prev) => {
+        const next = [...prev];
+        next[wordIndex] = true;
+        return next;
+      });
+    } else {
+      setHasPlayed(true);
+    }
   };
 
   const checkDictation = () => {
-    if (!transcript.trim()) return;
-    const tokens = diffWords(referenceText, transcript);
-    setResult({ tokens, accuracy: computeAccuracy(tokens) });
+    if (isWords) {
+      if (!wordInput.trim()) return;
+      const tokens = diffWords(currentWord, wordInput);
+      const matched = tokens.some((t) => t.matched);
+      setWordDictation((prev) => {
+        const next = [...prev];
+        next[wordIndex] = { typed: wordInput, matched };
+        return next;
+      });
+    } else {
+      if (!transcript.trim()) return;
+      const tokens = diffWords(referenceText, transcript);
+      setResult({ tokens, accuracy: computeAccuracy(tokens) });
+    }
   };
 
   const repeatAloud = () => {
@@ -109,21 +160,53 @@ const ListeningView = () => {
       speechRecognition.stop();
       return;
     }
-    setSpokenResult(null);
-    speechRecognition.start((heard) => {
-      setSpokenResult(diffWords(referenceText, heard));
-    });
+    if (isWords) {
+      speechRecognition.start((heard) => {
+        setWordSpoken((prev) => {
+          const next = [...prev];
+          next[wordIndex] = diffWords(currentWord, heard);
+          return next;
+        });
+      });
+    } else {
+      setSpokenResult(null);
+      speechRecognition.start((heard) => {
+        setSpokenResult(diffWords(referenceText, heard));
+      });
+    }
   };
 
+  const goPrevWord = () => setWordIndex((i) => Math.max(0, i - 1));
+  const goNextWord = () => setWordIndex((i) => Math.min(words.length - 1, i + 1));
+
+  const attemptedCount = wordDictation.filter(Boolean).length;
+  const allWordsAttempted = words.length > 0 && attemptedCount === words.length;
+  const currentDictation = wordDictation[wordIndex];
+
   const submit = async () => {
-    if (!passage || !result || submitting) return;
+    if (!passage || submitting) return;
+    let accuracy: number;
+    let mistakes: { expected: string; heard: string }[];
+
+    if (isWords) {
+      const tokens: WordDiffToken[] = words.map((w, i) => ({ word: w, matched: wordDictation[i]?.matched ?? false }));
+      accuracy = computeAccuracy(tokens);
+      mistakes = words
+        .map((w, i) => ({ expected: w, heard: wordDictation[i]?.typed || '', matched: wordDictation[i]?.matched ?? false }))
+        .filter((m) => !m.matched)
+        .map(({ expected, heard }) => ({ expected, heard }));
+    } else {
+      if (!result) return;
+      accuracy = result.accuracy;
+      mistakes = result.tokens.filter((t) => !t.matched).map((t) => ({ expected: t.word, heard: '' }));
+    }
+
     try {
       setSubmitting(true);
-      const mistakes = result.tokens.filter((t) => !t.matched).map((t) => ({ expected: t.word, heard: '' }));
-      const res = await submitSkillSession('LISTENING', { passageId: passage.passageId, accuracy: result.accuracy, mistakes });
+      const res = await submitSkillSession('LISTENING', { passageId: passage.passageId, accuracy, mistakes });
       const leveledUp = Boolean(stats && res.level !== stats.level);
       toast({
-        title: leveledUp ? `Level up! You're now at ${LEVEL_LABEL[res.level]} 🎉` : `Saved — ${result.accuracy}% accuracy`,
+        title: leveledUp ? `Level up! You're now at ${LEVEL_LABEL[res.level]} 🎉` : `Saved — ${accuracy}% accuracy`,
         status: 'success',
         duration: 2400,
         position: 'top',
@@ -184,12 +267,43 @@ const ListeningView = () => {
             <Badge bg={roseTint} color={roseDeep} borderRadius="full" px={3} py={0.5} fontSize="10px">
               {LEVEL_LABEL[passage.level]}
             </Badge>
-            {passage.topic && (
+            {isWords && (
+              <Badge bg={card} color={inkSoft} borderRadius="full" px={3} py={0.5} fontSize="10px">
+                {wordIndex + 1}/{words.length}
+              </Badge>
+            )}
+            {passage.topic && !isWords && (
               <Badge bg={card} color={inkSoft} borderRadius="full" px={3} py={0.5} fontSize="10px">
                 {passage.topic}
               </Badge>
             )}
           </HStack>
+
+          {isWords && (
+            <Flex align="center" justify="center" gap={{ base: 2, md: 5 }} mb={4}>
+              <IconButton
+                aria-label="Previous word"
+                icon={<Icon as={FiChevronLeft} boxSize={5} />}
+                onClick={goPrevWord}
+                isDisabled={wordIndex === 0}
+                variant="ghost"
+                borderRadius="full"
+                color={inkSoft}
+              />
+              <Text fontSize="xs" color={inkSoft} fontWeight="600" minW="90px" textAlign="center">
+                Word {wordIndex + 1} of {words.length}
+              </Text>
+              <IconButton
+                aria-label="Next word"
+                icon={<Icon as={FiChevronRight} boxSize={5} />}
+                onClick={goNextWord}
+                isDisabled={wordIndex === words.length - 1}
+                variant="ghost"
+                borderRadius="full"
+                color={inkSoft}
+              />
+            </Flex>
+          )}
 
           <Flex direction="column" align="center" gap={3} mb={7}>
             <Circle
@@ -205,105 +319,197 @@ const ListeningView = () => {
               <Icon as={FiVolume2} boxSize={6} />
             </Circle>
             <Text fontSize="xs" color={inkSoft} fontWeight="600">
-              {hasPlayed ? 'Tap to play it again' : 'Tap to play the audio'}
+              {(isWords ? wordPlayed[wordIndex] : hasPlayed) ? 'Tap to play it again' : 'Tap to play the audio'}
             </Text>
           </Flex>
 
-          {hasPlayed && !result && (
-            <Stack spacing={3} maxW="560px" mx="auto">
-              <Textarea
-                value={transcript}
-                onChange={(e) => setTranscript(e.target.value)}
-                placeholder="Type what you heard..."
-                bg="white"
-                borderColor={line}
-                _focus={{ borderColor: ink, boxShadow: 'none' }}
-                rows={4}
-              />
+          {isWords ? (
+            <Stack spacing={4} maxW="480px" mx="auto">
+              {wordPlayed[wordIndex] && !currentDictation && (
+                <Stack spacing={3}>
+                  <Input
+                    value={wordInput}
+                    onChange={(e) => setWordInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && checkDictation()}
+                    placeholder="Type the word you heard..."
+                    bg="white"
+                    borderColor={line}
+                    textAlign="center"
+                    _focus={{ borderColor: ink, boxShadow: 'none' }}
+                  />
+                  <Button
+                    onClick={checkDictation}
+                    isDisabled={!wordInput.trim()}
+                    alignSelf="center"
+                    borderRadius="full"
+                    bg={ink}
+                    color="white"
+                    _hover={{ bg: '#463039' }}
+                    px={6}
+                  >
+                    Check my answer
+                  </Button>
+                </Stack>
+              )}
+
+              {currentDictation && (
+                <Stack spacing={4}>
+                  <HStack justify="center" spacing={2}>
+                    <Icon
+                      as={currentDictation.matched ? FiCheckCircle : FiXCircle}
+                      color={currentDictation.matched ? sageDeep : roseDeep}
+                      boxSize={5}
+                    />
+                    <Text fontWeight="700" color={currentDictation.matched ? sageDeep : roseDeep}>
+                      {currentDictation.matched ? 'Correct!' : `You typed "${currentDictation.typed}" — it was "${currentWord}"`}
+                    </Text>
+                  </HStack>
+
+                  <Box borderTop="1px solid" borderColor={line} pt={4}>
+                    <Flex direction="column" align="center" gap={2}>
+                      {speechRecognition.supported && (
+                        <Circle
+                          as="button"
+                          size="48px"
+                          bg={speechRecognition.isListening ? rose : sageTint}
+                          color={speechRecognition.isListening ? 'white' : sageDeep}
+                          onClick={repeatAloud}
+                          _hover={{ bg: speechRecognition.isListening ? roseDeep : sage, color: 'white' }}
+                          transition="all 0.15s"
+                          aria-label={speechRecognition.isListening ? 'Stop repeating' : 'Repeat it aloud'}
+                        >
+                          <Icon as={FiMic} boxSize={4} />
+                        </Circle>
+                      )}
+                      <Text fontSize="xs" color={inkSoft} fontWeight="600">
+                        {speechRecognition.isListening ? 'Listening...' : 'Now try saying it out loud'}
+                      </Text>
+                    </Flex>
+                    {wordSpoken[wordIndex] && !speechRecognition.isListening && (
+                      <Box bg={sageTint} borderRadius="xl" p={3} mt={3} textAlign="center">
+                        <WordDiffDisplay tokens={wordSpoken[wordIndex] as WordDiffToken[]} />
+                      </Box>
+                    )}
+                  </Box>
+                </Stack>
+              )}
+            </Stack>
+          ) : (
+            <>
+              {hasPlayed && !result && (
+                <Stack spacing={3} maxW="560px" mx="auto">
+                  <Textarea
+                    value={transcript}
+                    onChange={(e) => setTranscript(e.target.value)}
+                    placeholder="Type what you heard..."
+                    bg="white"
+                    borderColor={line}
+                    _focus={{ borderColor: ink, boxShadow: 'none' }}
+                    rows={4}
+                  />
+                  <Button
+                    onClick={checkDictation}
+                    isDisabled={!transcript.trim()}
+                    alignSelf="center"
+                    borderRadius="full"
+                    bg={ink}
+                    color="white"
+                    _hover={{ bg: '#463039' }}
+                    px={6}
+                  >
+                    Check my answer
+                  </Button>
+                </Stack>
+              )}
+
+              {result && (
+                <Stack spacing={5} mt={2} maxW="560px" mx="auto">
+                  <Box bg={card} borderRadius="xl" p={4}>
+                    <Text fontSize="xs" fontWeight="700" color={inkSoft} mb={2} textTransform="uppercase" letterSpacing="0.05em">
+                      What was actually said — {result.accuracy}% accuracy
+                    </Text>
+                    <WordDiffDisplay tokens={result.tokens} />
+                  </Box>
+
+                  <Box borderTop="1px solid" borderColor={line} pt={5}>
+                    <Flex direction="column" align="center" gap={3}>
+                      {speechRecognition.supported ? (
+                        <Circle
+                          as="button"
+                          size="52px"
+                          bg={speechRecognition.isListening ? rose : sageTint}
+                          color={speechRecognition.isListening ? 'white' : sageDeep}
+                          onClick={repeatAloud}
+                          _hover={{ bg: speechRecognition.isListening ? roseDeep : sage, color: 'white' }}
+                          transition="all 0.15s"
+                          aria-label={speechRecognition.isListening ? 'Stop repeating' : 'Repeat it aloud'}
+                        >
+                          <Icon as={FiMic} boxSize={5} />
+                        </Circle>
+                      ) : null}
+                      <Text fontSize="xs" color={inkSoft} fontWeight="600">
+                        {speechRecognition.isListening ? 'Listening — say it back...' : 'Now try saying it back out loud'}
+                      </Text>
+                    </Flex>
+                    {spokenResult && !speechRecognition.isListening && (
+                      <Box bg={sageTint} borderRadius="xl" p={4} mt={4}>
+                        <Text fontSize="xs" fontWeight="700" color={sageDeep} mb={2} textTransform="uppercase" letterSpacing="0.05em">
+                          Your speaking practice
+                        </Text>
+                        <WordDiffDisplay tokens={spokenResult} />
+                      </Box>
+                    )}
+                  </Box>
+
+                  <Flex gap={3} justify="center">
+                    <Button
+                      onClick={() => {
+                        setResult(null);
+                        setTranscript('');
+                        setSpokenResult(null);
+                      }}
+                      variant="outline"
+                      borderColor={line}
+                      color={inkSoft}
+                      borderRadius="full"
+                      _hover={{ borderColor: ink, color: ink }}
+                      px={6}
+                    >
+                      Try again
+                    </Button>
+                    <Button
+                      onClick={submit}
+                      isLoading={submitting}
+                      rightIcon={<Icon as={FiChevronRight} />}
+                      borderRadius="full"
+                      bg={ink}
+                      color="white"
+                      _hover={{ bg: '#463039' }}
+                      px={6}
+                    >
+                      Save & continue
+                    </Button>
+                  </Flex>
+                </Stack>
+              )}
+            </>
+          )}
+
+          {isWords && allWordsAttempted && (
+            <Flex justify="center" mt={7}>
               <Button
-                onClick={checkDictation}
-                isDisabled={!transcript.trim()}
-                alignSelf="center"
+                onClick={submit}
+                isLoading={submitting}
+                rightIcon={<Icon as={FiChevronRight} />}
                 borderRadius="full"
                 bg={ink}
                 color="white"
                 _hover={{ bg: '#463039' }}
                 px={6}
               >
-                Check my answer
+                Finish & save session
               </Button>
-            </Stack>
-          )}
-
-          {result && (
-            <Stack spacing={5} mt={2} maxW="560px" mx="auto">
-              <Box bg={card} borderRadius="xl" p={4}>
-                <Text fontSize="xs" fontWeight="700" color={inkSoft} mb={2} textTransform="uppercase" letterSpacing="0.05em">
-                  What was actually said — {result.accuracy}% accuracy
-                </Text>
-                <WordDiffDisplay tokens={result.tokens} />
-              </Box>
-
-              <Box borderTop="1px solid" borderColor={line} pt={5}>
-                <Flex direction="column" align="center" gap={3}>
-                  {speechRecognition.supported ? (
-                    <Circle
-                      as="button"
-                      size="52px"
-                      bg={speechRecognition.isListening ? rose : sageTint}
-                      color={speechRecognition.isListening ? 'white' : sageDeep}
-                      onClick={repeatAloud}
-                      _hover={{ bg: speechRecognition.isListening ? roseDeep : sage, color: 'white' }}
-                      transition="all 0.15s"
-                      aria-label={speechRecognition.isListening ? 'Stop repeating' : 'Repeat it aloud'}
-                    >
-                      <Icon as={FiMic} boxSize={5} />
-                    </Circle>
-                  ) : null}
-                  <Text fontSize="xs" color={inkSoft} fontWeight="600">
-                    {speechRecognition.isListening ? 'Listening — say it back...' : 'Now try saying it back out loud'}
-                  </Text>
-                </Flex>
-                {spokenResult && !speechRecognition.isListening && (
-                  <Box bg={sageTint} borderRadius="xl" p={4} mt={4}>
-                    <Text fontSize="xs" fontWeight="700" color={sageDeep} mb={2} textTransform="uppercase" letterSpacing="0.05em">
-                      Your speaking practice
-                    </Text>
-                    <WordDiffDisplay tokens={spokenResult} />
-                  </Box>
-                )}
-              </Box>
-
-              <Flex gap={3} justify="center">
-                <Button
-                  onClick={() => {
-                    setResult(null);
-                    setTranscript('');
-                    setSpokenResult(null);
-                  }}
-                  variant="outline"
-                  borderColor={line}
-                  color={inkSoft}
-                  borderRadius="full"
-                  _hover={{ borderColor: ink, color: ink }}
-                  px={6}
-                >
-                  Try again
-                </Button>
-                <Button
-                  onClick={submit}
-                  isLoading={submitting}
-                  rightIcon={<Icon as={FiChevronRight} />}
-                  borderRadius="full"
-                  bg={ink}
-                  color="white"
-                  _hover={{ bg: '#463039' }}
-                  px={6}
-                >
-                  Save & continue
-                </Button>
-              </Flex>
-            </Stack>
+            </Flex>
           )}
         </Box>
       )}

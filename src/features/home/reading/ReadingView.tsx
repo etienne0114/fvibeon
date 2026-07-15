@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, AlertIcon, Badge, Box, Button, Circle, Flex, HStack, Icon, Skeleton, SimpleGrid, Stack, Text, Wrap, WrapItem, useToast } from '@chakra-ui/react';
-import { FiMic, FiChevronRight } from 'react-icons/fi';
+import { Alert, AlertIcon, Badge, Box, Button, Circle, Flex, HStack, Icon, IconButton, Skeleton, SimpleGrid, Stack, Text, useToast } from '@chakra-ui/react';
+import { FiMic, FiChevronRight, FiChevronLeft, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 import { fetchSkillPassage, submitSkillSession, fetchSkillStats, SkillPassage, SkillStats } from '../../../api/reading';
 import { useSpeechRecognition } from '../../../hooks/useSpeechRecognition';
 import { diffWords, computeAccuracy, WordDiffToken } from '../../../utils/textDiff';
 import WordDiffDisplay from './WordDiffDisplay';
-import { ink, inkSoft, rose, roseDeep, card, line, serif, sage, sageDeep, roseTint, sageTint, amber } from '../../../theme/brand';
+import { ink, inkSoft, rose, roseDeep, card, line, serif, sage, sageDeep, roseTint, sageTint } from '../../../theme/brand';
 
 const LANGS = [
   { id: 'en', label: 'English' },
@@ -29,6 +29,10 @@ const StatPill = ({ label, value }: { label: string; value: string | number }) =
 interface ReadResult {
   tokens: WordDiffToken[];
   accuracy: number;
+}
+
+interface WordAttempt {
+  matched: boolean;
   heard: string;
 }
 
@@ -39,20 +43,33 @@ const ReadingView = () => {
   const [stats, setStats] = useState<SkillStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ReadResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // PARAGRAPH mode (whole text read in one go)
+  const [result, setResult] = useState<ReadResult | null>(null);
+
+  // WORDS mode (beginner) — one word on screen at a time, Prev/Next
+  // between them, results accumulated until the last word is finished.
+  const [wordIndex, setWordIndex] = useState(0);
+  const [wordAttempts, setWordAttempts] = useState<(WordAttempt | null)[]>([]);
 
   const speechRecognition = useSpeechRecognition(language);
 
-  const referenceText = passage?.contentType === 'WORDS' ? (passage.words || []).join(' ') : passage?.text || '';
+  const isWords = passage?.contentType === 'WORDS';
+  const words = passage?.words || [];
+  const currentWord = words[wordIndex] || '';
+  const referenceText = isWords ? currentWord : passage?.text || '';
 
   const load = useCallback(async (lang: string) => {
     try {
       setLoading(true);
       setError(null);
       setResult(null);
+      setWordIndex(0);
+      setWordAttempts([]);
       const [p, s] = await Promise.all([fetchSkillPassage('READING', lang), fetchSkillStats('READING', lang)]);
       setPassage(p);
+      setWordAttempts(new Array((p.words || []).length).fill(null));
       setStats(s);
     } catch (err: any) {
       setError(err?.friendlyMessage || err?.response?.data?.error || 'Could not load a reading passage');
@@ -71,22 +88,55 @@ const ReadingView = () => {
       speechRecognition.stop();
       return;
     }
-    setResult(null);
-    speechRecognition.start((heard) => {
-      const tokens = diffWords(referenceText, heard);
-      setResult({ tokens, accuracy: computeAccuracy(tokens), heard });
-    });
+    if (isWords) {
+      speechRecognition.start((heard) => {
+        const tokens = diffWords(currentWord, heard);
+        const matched = tokens.some((t) => t.matched);
+        setWordAttempts((prev) => {
+          const next = [...prev];
+          next[wordIndex] = { matched, heard };
+          return next;
+        });
+      });
+    } else {
+      setResult(null);
+      speechRecognition.start((heard) => {
+        const tokens = diffWords(referenceText, heard);
+        setResult({ tokens, accuracy: computeAccuracy(tokens) });
+      });
+    }
   };
 
+  const goPrevWord = () => setWordIndex((i) => Math.max(0, i - 1));
+  const goNextWord = () => setWordIndex((i) => Math.min(words.length - 1, i + 1));
+
+  const attemptedCount = wordAttempts.filter(Boolean).length;
+  const allWordsAttempted = words.length > 0 && attemptedCount === words.length;
+
   const submit = async () => {
-    if (!passage || !result || submitting) return;
+    if (!passage || submitting) return;
+    let accuracy: number;
+    let mistakes: { expected: string; heard: string }[];
+
+    if (isWords) {
+      const tokens: WordDiffToken[] = words.map((w, i) => ({ word: w, matched: wordAttempts[i]?.matched ?? false }));
+      accuracy = computeAccuracy(tokens);
+      mistakes = words
+        .map((w, i) => ({ expected: w, heard: wordAttempts[i]?.heard || '', matched: wordAttempts[i]?.matched ?? false }))
+        .filter((m) => !m.matched)
+        .map(({ expected, heard }) => ({ expected, heard }));
+    } else {
+      if (!result) return;
+      accuracy = result.accuracy;
+      mistakes = result.tokens.filter((t) => !t.matched).map((t) => ({ expected: t.word, heard: '' }));
+    }
+
     try {
       setSubmitting(true);
-      const mistakes = result.tokens.filter((t) => !t.matched).map((t) => ({ expected: t.word, heard: '' }));
-      const res = await submitSkillSession('READING', { passageId: passage.passageId, accuracy: result.accuracy, mistakes });
+      const res = await submitSkillSession('READING', { passageId: passage.passageId, accuracy, mistakes });
       const leveledUp = Boolean(stats && res.level !== stats.level);
       toast({
-        title: leveledUp ? `Level up! You're now at ${LEVEL_LABEL[res.level]} 🎉` : `Saved — ${result.accuracy}% accuracy`,
+        title: leveledUp ? `Level up! You're now at ${LEVEL_LABEL[res.level]} 🎉` : `Saved — ${accuracy}% accuracy`,
         status: 'success',
         duration: 2400,
         position: 'top',
@@ -98,6 +148,8 @@ const ReadingView = () => {
       setSubmitting(false);
     }
   };
+
+  const currentAttempt = wordAttempts[wordIndex];
 
   return (
     <Stack spacing={5}>
@@ -147,23 +199,51 @@ const ReadingView = () => {
             <Badge bg={roseTint} color={roseDeep} borderRadius="full" px={3} py={0.5} fontSize="10px">
               {LEVEL_LABEL[passage.level]}
             </Badge>
-            {passage.topic && (
+            {isWords && (
+              <Badge bg={card} color={inkSoft} borderRadius="full" px={3} py={0.5} fontSize="10px">
+                {wordIndex + 1}/{words.length}
+              </Badge>
+            )}
+            {passage.topic && !isWords && (
               <Badge bg={card} color={inkSoft} borderRadius="full" px={3} py={0.5} fontSize="10px">
                 {passage.topic}
               </Badge>
             )}
           </HStack>
 
-          {passage.contentType === 'WORDS' ? (
-            <Wrap justify="center" spacing={3} mb={6}>
-              {(passage.words || []).map((w) => (
-                <WrapItem key={w}>
-                  <Text fontFamily={serif} fontWeight="700" fontSize={{ base: 'xl', md: '2xl' }} color={ink} px={3} py={1}>
-                    {w}
-                  </Text>
-                </WrapItem>
-              ))}
-            </Wrap>
+          {isWords ? (
+            <Flex align="center" justify="center" gap={{ base: 2, md: 5 }} mb={6}>
+              <IconButton
+                aria-label="Previous word"
+                icon={<Icon as={FiChevronLeft} boxSize={5} />}
+                onClick={goPrevWord}
+                isDisabled={wordIndex === 0}
+                variant="ghost"
+                borderRadius="full"
+                color={inkSoft}
+              />
+              <HStack spacing={3}>
+                <Text fontFamily={serif} fontWeight="700" fontSize={{ base: '3xl', md: '4xl' }} color={ink} wordBreak="break-word">
+                  {currentWord}
+                </Text>
+                {currentAttempt && (
+                  <Icon
+                    as={currentAttempt.matched ? FiCheckCircle : FiXCircle}
+                    color={currentAttempt.matched ? sageDeep : roseDeep}
+                    boxSize={6}
+                  />
+                )}
+              </HStack>
+              <IconButton
+                aria-label="Next word"
+                icon={<Icon as={FiChevronRight} boxSize={5} />}
+                onClick={goNextWord}
+                isDisabled={wordIndex === words.length - 1}
+                variant="ghost"
+                borderRadius="full"
+                color={inkSoft}
+              />
+            </Flex>
           ) : (
             <Text fontFamily={serif} fontSize={{ base: 'lg', md: 'xl' }} color={ink} lineHeight="1.8" mb={6} textAlign="left" maxW="620px" mx="auto">
               {passage.text}
@@ -192,30 +272,19 @@ const ReadingView = () => {
             <Text fontSize="xs" color={inkSoft} fontWeight="600">
               {speechRecognition.isListening
                 ? `Listening — read it aloud${speechRecognition.interimText ? `: "${speechRecognition.interimText}"` : '...'}`
-                : 'Tap the mic and read it aloud'}
+                : isWords
+                  ? currentAttempt
+                    ? currentAttempt.matched
+                      ? 'Nicely read! Tap next to continue'
+                      : `Heard "${currentAttempt.heard}" — tap the mic to try again`
+                    : 'Tap the mic and read this word aloud'
+                  : 'Tap the mic and read it aloud'}
             </Text>
           </Flex>
 
-          {result && !speechRecognition.isListening && (
-            <Stack spacing={4} mt={7} maxW="620px" mx="auto">
-              <Box bg={card} borderRadius="xl" p={4}>
-                <Text fontSize="xs" fontWeight="700" color={inkSoft} mb={2} textTransform="uppercase" letterSpacing="0.05em">
-                  Your reading — {result.accuracy}% accuracy
-                </Text>
-                <WordDiffDisplay tokens={result.tokens} />
-              </Box>
-              <Flex gap={3} justify="center">
-                <Button
-                  onClick={() => setResult(null)}
-                  variant="outline"
-                  borderColor={line}
-                  color={inkSoft}
-                  borderRadius="full"
-                  _hover={{ borderColor: ink, color: ink }}
-                  px={6}
-                >
-                  Try again
-                </Button>
+          {isWords ? (
+            allWordsAttempted && (
+              <Flex justify="center" mt={6}>
                 <Button
                   onClick={submit}
                   isLoading={submitting}
@@ -226,10 +295,47 @@ const ReadingView = () => {
                   _hover={{ bg: '#463039' }}
                   px={6}
                 >
-                  Save & continue
+                  Finish & save session
                 </Button>
               </Flex>
-            </Stack>
+            )
+          ) : (
+            result &&
+            !speechRecognition.isListening && (
+              <Stack spacing={4} mt={7} maxW="620px" mx="auto">
+                <Box bg={card} borderRadius="xl" p={4}>
+                  <Text fontSize="xs" fontWeight="700" color={inkSoft} mb={2} textTransform="uppercase" letterSpacing="0.05em">
+                    Your reading — {result.accuracy}% accuracy
+                  </Text>
+                  <WordDiffDisplay tokens={result.tokens} />
+                </Box>
+                <Flex gap={3} justify="center">
+                  <Button
+                    onClick={() => setResult(null)}
+                    variant="outline"
+                    borderColor={line}
+                    color={inkSoft}
+                    borderRadius="full"
+                    _hover={{ borderColor: ink, color: ink }}
+                    px={6}
+                  >
+                    Try again
+                  </Button>
+                  <Button
+                    onClick={submit}
+                    isLoading={submitting}
+                    rightIcon={<Icon as={FiChevronRight} />}
+                    borderRadius="full"
+                    bg={ink}
+                    color="white"
+                    _hover={{ bg: '#463039' }}
+                    px={6}
+                  >
+                    Save & continue
+                  </Button>
+                </Flex>
+              </Stack>
+            )
           )}
         </Box>
       )}
