@@ -12,12 +12,16 @@ import {
   Icon,
   IconButton,
   Input,
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuList,
   Modal,
   ModalBody,
   ModalCloseButton,
   ModalContent,
   ModalOverlay,
-  Select,
+  Portal,
   SimpleGrid,
   Stack,
   Text,
@@ -34,6 +38,7 @@ import {
   FiCheckCircle,
   FiMail,
   FiCalendar,
+  FiChevronDown,
 } from 'react-icons/fi';
 import { MeUser } from '../../../hooks/useMe';
 import { DashboardSummary } from '../../../hooks/useDashboard';
@@ -68,6 +73,55 @@ const formatMinutes = (mins: number) => {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return m ? `${h}h ${m}m` : `${h}h`;
+};
+
+// A native <select>'s dropdown is positioned by the browser itself, and
+// Chakra's Modal entrance animation applies a CSS transform to
+// ModalContent — an ancestor with `transform` creates a new containing
+// block that some browsers get wrong when placing a native <select>
+// popup, so it can render detached from its trigger (off to the side,
+// outside the modal) instead of directly beneath the field. Chakra's own
+// Menu is positioned via Popper (which accounts for transformed
+// ancestors) and rendered in a Portal here, so it's immune to this.
+const MenuSelect = ({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: { id: string; label: string }[];
+  onChange: (id: string) => void;
+}) => {
+  const current = options.find((o) => o.id === value);
+  return (
+    <Menu matchWidth placement="bottom-start">
+      <MenuButton
+        as={Button}
+        rightIcon={<Icon as={FiChevronDown} boxSize={3.5} />}
+        variant="outline"
+        borderColor={line}
+        bg="white"
+        color={ink}
+        fontWeight="500"
+        w="full"
+        textAlign="left"
+        justifyContent="space-between"
+        _hover={{ borderColor: ink }}
+        _active={{ borderColor: ink }}
+      >
+        {current?.label || 'Select...'}
+      </MenuButton>
+      <Portal>
+        <MenuList borderColor={line} maxH="240px" overflowY="auto" zIndex="popover">
+          {options.map((o) => (
+            <MenuItem key={o.id} onClick={() => onChange(o.id)} fontWeight={o.id === value ? '700' : '400'} color={ink}>
+              {o.label}
+            </MenuItem>
+          ))}
+        </MenuList>
+      </Portal>
+    </Menu>
+  );
 };
 
 const StatTile = ({ label, value }: { label: string; value: string | number }) => (
@@ -371,39 +425,21 @@ const ProfileModal = ({
                     <FormLabel fontSize="sm" color={inkSoft}>
                       Learning language
                     </FormLabel>
-                    <Select value={learningLanguage} onChange={(e) => setLearningLanguage(e.target.value)} borderColor={line}>
-                      {LANGS.map((l) => (
-                        <option key={l.id} value={l.id}>
-                          {l.label}
-                        </option>
-                      ))}
-                    </Select>
+                    <MenuSelect value={learningLanguage} options={LANGS} onChange={setLearningLanguage} />
                   </FormControl>
 
                   <FormControl>
                     <FormLabel fontSize="sm" color={inkSoft}>
                       Native / preferred language
                     </FormLabel>
-                    <Select value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value)} borderColor={line}>
-                      {LANGS.map((l) => (
-                        <option key={l.id} value={l.id}>
-                          {l.label}
-                        </option>
-                      ))}
-                    </Select>
+                    <MenuSelect value={preferredLanguage} options={LANGS} onChange={setPreferredLanguage} />
                   </FormControl>
 
                   <FormControl>
                     <FormLabel fontSize="sm" color={inkSoft}>
                       Proficiency level
                     </FormLabel>
-                    <Select value={proficiencyLevel} onChange={(e) => setProficiencyLevel(e.target.value)} borderColor={line}>
-                      {LEVELS.map((l) => (
-                        <option key={l.id} value={l.id}>
-                          {l.label}
-                        </option>
-                      ))}
-                    </Select>
+                    <MenuSelect value={proficiencyLevel} options={LEVELS} onChange={setProficiencyLevel} />
                   </FormControl>
 
                   <FormControl>
