@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, AlertIcon, Badge, Box, Button, Circle, Flex, HStack, Icon, IconButton, Skeleton, SimpleGrid, Stack, Text, useToast } from '@chakra-ui/react';
-import { FiMic, FiChevronRight, FiChevronLeft, FiCheckCircle, FiXCircle } from 'react-icons/fi';
+import { FiMic, FiVolume2, FiChevronRight, FiChevronLeft, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 import { fetchSkillPassage, submitSkillSession, fetchSkillStats, SkillPassage, SkillStats } from '../../../api/reading';
 import { useSpeechRecognition } from '../../../hooks/useSpeechRecognition';
 import { diffWords, computeAccuracy, WordDiffToken } from '../../../utils/textDiff';
@@ -14,6 +14,17 @@ const LANGS = [
 ];
 
 const LEVEL_LABEL: Record<string, string> = { BEGINNER: 'Beginner', INTERMEDIATE: 'Intermediate', ADVANCED: 'Advanced' };
+
+// Same instant browser TTS as Vocabulary's Listen button — reading
+// benefits from hearing the correct pronunciation modeled before (or
+// after) attempting it, and this needs no network round trip.
+const speak = (text: string, lang: string) => {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = lang === 'fr' ? 'fr-FR' : lang === 'rw' ? 'rw-RW' : 'en-US';
+  window.speechSynthesis.speak(utter);
+};
 
 const StatPill = ({ label, value }: { label: string; value: string | number }) => (
   <Box bg={card} border="1px solid" borderColor={line} borderRadius="xl" px={4} py={2.5} textAlign="center" flex={1}>
@@ -226,6 +237,19 @@ const ReadingView = () => {
                 <Text fontFamily={serif} fontWeight="700" fontSize={{ base: '3xl', md: '4xl' }} color={ink} wordBreak="break-word">
                   {currentWord}
                 </Text>
+                <Circle
+                  as="button"
+                  size="40px"
+                  bg={sageTint}
+                  color={sageDeep}
+                  onClick={() => speak(currentWord, language)}
+                  _hover={{ bg: sage, color: 'white' }}
+                  transition="all 0.15s"
+                  aria-label="Listen"
+                  flexShrink={0}
+                >
+                  <Icon as={FiVolume2} boxSize={4} />
+                </Circle>
                 {currentAttempt && (
                   <Icon
                     as={currentAttempt.matched ? FiCheckCircle : FiXCircle}
@@ -245,9 +269,25 @@ const ReadingView = () => {
               />
             </Flex>
           ) : (
-            <Text fontFamily={serif} fontSize={{ base: 'lg', md: 'xl' }} color={ink} lineHeight="1.8" mb={6} textAlign="left" maxW="620px" mx="auto">
-              {passage.text}
-            </Text>
+            <Box maxW="620px" mx="auto" mb={6}>
+              <Flex justify="flex-end" mb={2}>
+                <Circle
+                  as="button"
+                  size="36px"
+                  bg={sageTint}
+                  color={sageDeep}
+                  onClick={() => speak(referenceText, language)}
+                  _hover={{ bg: sage, color: 'white' }}
+                  transition="all 0.15s"
+                  aria-label="Listen"
+                >
+                  <Icon as={FiVolume2} boxSize={4} />
+                </Circle>
+              </Flex>
+              <Text fontFamily={serif} fontSize={{ base: 'lg', md: 'xl' }} color={ink} lineHeight="1.8" textAlign="left">
+                {passage.text}
+              </Text>
+            </Box>
           )}
 
           <Flex direction="column" align="center" gap={3}>
