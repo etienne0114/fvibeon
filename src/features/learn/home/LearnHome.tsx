@@ -6,9 +6,10 @@ import CoursesView from '../../home/CoursesView';
 
 // Heavy, rarely-first-visited panels load on demand to keep the initial
 // bundle (and first paint) small.
-const TutorChat = lazy(() => import('../chat/TutorChat'));
 const TranslatorPanel = lazy(() => import('../translator/TranslatorPanel'));
 const PracticeView = lazy(() => import('../../home/practice/PracticeView'));
+const ReadingView = lazy(() => import('../../home/reading/ReadingView'));
+const ListeningView = lazy(() => import('../../home/listening/ListeningView'));
 
 const PanelFallback = () => (
   <Stack spacing={4}>
@@ -18,7 +19,6 @@ const PanelFallback = () => (
 );
 import { useDashboard } from '../../../hooks/useDashboard';
 import { useMe } from '../../../hooks/useMe';
-import { useTutorChat } from '../../../hooks/useTutorChat';
 import { ink, line, serif } from '../../../theme/brand';
 
 interface LearnHomeProps {
@@ -43,7 +43,6 @@ const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
   const [openCourseId, setOpenCourseId] = useState<string | null>(null);
   const user = useMe(Boolean(token));
   const { data, isLoading, error, retryable, refetch } = useDashboard({ enabled: Boolean(token) });
-  const { message, setMessage, helperText, sendMessage, isLoading: isChatting } = useTutorChat();
 
   const openCourse = (courseId: string | null) => {
     setOpenCourseId(courseId);
@@ -60,16 +59,16 @@ const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
             <TranslatorPanel />
           </PanelSurface>
         );
-      case 'chat':
+      case 'reading':
         return (
           <PanelSurface>
-            <TutorChat
-              message={message}
-              onChange={setMessage}
-              onSend={sendMessage}
-              isSending={isChatting}
-              helperText={helperText}
-            />
+            <ReadingView />
+          </PanelSurface>
+        );
+      case 'listening':
+        return (
+          <PanelSurface>
+            <ListeningView />
           </PanelSurface>
         );
       case 'practices':
