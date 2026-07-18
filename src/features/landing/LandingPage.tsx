@@ -43,7 +43,12 @@ const serif = '"Fraunces", Georgia, serif';
 
 interface LandingPageProps {
   onOpenApp: () => void;
+  onOpenPrivacy: () => void;
 }
+
+const scrollToId = (id: string) => {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
 
 const NavLink = ({ children, href }: { children: React.ReactNode; href: string }) => (
   <Link
@@ -330,7 +335,7 @@ const PhoneMockup = () => (
   </Box>
 );
 
-const LandingPage = ({ onOpenApp }: LandingPageProps) => {
+const LandingPage = ({ onOpenApp, onOpenPrivacy }: LandingPageProps) => {
   const { isOpen, onToggle } = useDisclosure();
 
   const navLinks = (
@@ -721,43 +726,68 @@ const LandingPage = ({ onOpenApp }: LandingPageProps) => {
       {/* ============ FOOTER ============ */}
       <Box bg={ink} color="#D8C7BC">
         <Container maxW="7xl" py={{ base: 12, md: 16 }}>
-          <Grid templateColumns={{ base: '1fr', sm: 'repeat(2, 1fr)', md: '1.4fr 1fr 1fr 1fr' }} gap={{ base: 10, md: 8 }}>
+          <Grid templateColumns={{ base: '1fr', sm: 'repeat(2, 1fr)', md: '1.4fr 1fr 1fr 1fr' }} gap={{ base: 8, md: 8 }}>
             <Stack spacing={4} maxW="280px">
               <Text fontFamily={serif} fontWeight="700" fontSize="xl" color="white">
                 Vibeon Learn
               </Text>
               <Text fontSize="sm" lineHeight="1.7">
-                Interactive, AI-powered language learning in 10+ languages — with an AI tutor,
-                instant translation, and daily practice drills.
+                Interactive, AI-powered language learning in 10+ languages — with reading,
+                listening, instant translation, and daily practice drills.
               </Text>
             </Stack>
             {[
               {
                 title: 'Product',
-                links: ['Features', 'Courses', 'Translator', 'Web app'],
+                links: [
+                  { label: 'Features', onClick: () => scrollToId('features') },
+                  { label: 'Courses', onClick: onOpenApp },
+                  { label: 'Translator', onClick: onOpenApp },
+                  { label: 'Web app', onClick: onOpenApp },
+                ],
               },
               {
                 title: 'Practice',
-                links: ['Vocabulary drills', 'Quizzes', 'Roleplay', 'AI tutor chat'],
+                links: [
+                  { label: 'Vocabulary drills', onClick: onOpenApp },
+                  { label: 'Quizzes', onClick: onOpenApp },
+                  { label: 'Roleplay', onClick: onOpenApp },
+                  { label: 'Reading & listening', onClick: onOpenApp },
+                ],
               },
               {
                 title: 'Support',
-                links: ['Getting started', 'Privacy', 'Contact'],
+                links: [
+                  { label: 'Getting started', onClick: onOpenApp },
+                  { label: 'Privacy', onClick: onOpenPrivacy },
+                  { label: 'Contact', onClick: onOpenApp },
+                ],
               },
             ].map((col) => (
-              <Stack key={col.title} spacing={3}>
+              <Stack key={col.title} spacing={1}>
                 <Text
                   fontSize="xs"
                   fontWeight="700"
                   letterSpacing="0.15em"
                   textTransform="uppercase"
                   color={amber}
+                  mb={2}
                 >
                   {col.title}
                 </Text>
                 {col.links.map((l) => (
-                  <Link key={l} fontSize="sm" _hover={{ color: 'white', textDecoration: 'none' }}>
-                    {l}
+                  <Link
+                    key={l.label}
+                    as="button"
+                    type="button"
+                    onClick={l.onClick}
+                    textAlign="left"
+                    fontSize="sm"
+                    py={2}
+                    _hover={{ color: 'white', textDecoration: 'none' }}
+                    _focusVisible={{ outline: '2px solid', outlineColor: amber, outlineOffset: '2px', borderRadius: 'sm' }}
+                  >
+                    {l.label}
                   </Link>
                 ))}
               </Stack>

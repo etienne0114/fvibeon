@@ -2,6 +2,7 @@ import { useState } from 'react';
 import AuthPage, { AuthMode } from './features/auth/AuthPage';
 import LandingPage from './features/landing/LandingPage';
 import LearnHome from './features/learn/home/LearnHome';
+import PrivacyPolicyPage from './features/legal/PrivacyPolicyPage';
 import { useAuth } from './hooks';
 
 const App = () => {
@@ -9,6 +10,7 @@ const App = () => {
   const [showAuth, setShowAuth] = useState(
     () => typeof window !== 'undefined' && window.location.hash === '#auth',
   );
+  const [showPrivacy, setShowPrivacy] = useState(false);
   const {
     token,
     authenticate,
@@ -40,8 +42,12 @@ const App = () => {
 
   const handleModeToggle = () => setMode((prev) => (prev === 'login' ? 'register' : 'login'));
 
+  if (!token && showPrivacy) {
+    return <PrivacyPolicyPage onBack={() => setShowPrivacy(false)} />;
+  }
+
   if (!token && !showAuth) {
-    return <LandingPage onOpenApp={() => setShowAuth(true)} />;
+    return <LandingPage onOpenApp={() => setShowAuth(true)} onOpenPrivacy={() => setShowPrivacy(true)} />;
   }
 
   if (!token) {
