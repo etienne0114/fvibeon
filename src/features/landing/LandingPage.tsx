@@ -726,16 +726,16 @@ const LandingPage = ({ onOpenApp, onOpenPrivacy }: LandingPageProps) => {
       {/* ============ FOOTER ============ */}
       <Box bg={ink} color="#D8C7BC">
         <Container maxW="7xl" py={{ base: 12, md: 16 }}>
-          <Grid templateColumns={{ base: '1fr', sm: 'repeat(2, 1fr)', md: '1.4fr 1fr 1fr 1fr' }} gap={{ base: 8, md: 8 }}>
-            <Stack spacing={4} maxW="280px">
-              <Text fontFamily={serif} fontWeight="700" fontSize="xl" color="white">
-                Vibeon Learn
-              </Text>
-              <Text fontSize="sm" lineHeight="1.7">
-                Interactive, AI-powered language learning in 10+ languages — with reading,
-                listening, instant translation, and daily practice drills.
-              </Text>
-            </Stack>
+          <Stack spacing={4} maxW="360px" mb={{ base: 8, md: 10 }}>
+            <Text fontFamily={serif} fontWeight="700" fontSize="xl" color="white">
+              Vibeon Learn
+            </Text>
+            <Text fontSize={{ base: 'md', md: 'sm' }} lineHeight="1.7">
+              Interactive, AI-powered language learning in 10+ languages — with reading,
+              listening, instant translation, and daily practice drills.
+            </Text>
+          </Stack>
+          <Grid templateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }} columnGap={6} rowGap={{ base: 8, md: 8 }}>
             {[
               {
                 title: 'Product',
@@ -782,7 +782,7 @@ const LandingPage = ({ onOpenApp, onOpenPrivacy }: LandingPageProps) => {
                     type="button"
                     onClick={l.onClick}
                     textAlign="left"
-                    fontSize="sm"
+                    fontSize={{ base: 'md', md: 'sm' }}
                     py={2}
                     _hover={{ color: 'white', textDecoration: 'none' }}
                     _focusVisible={{ outline: '2px solid', outlineColor: amber, outlineOffset: '2px', borderRadius: 'sm' }}
