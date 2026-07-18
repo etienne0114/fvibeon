@@ -25,7 +25,9 @@ import {
   FiShield,
   FiPlay,
   FiZap,
+  FiMail,
 } from 'react-icons/fi';
+import { FaWhatsapp, FaGithub } from 'react-icons/fa';
 
 // Warm editorial palette (landing only — independent from the app theme)
 const ink = '#2E1F26';
@@ -735,7 +737,7 @@ const LandingPage = ({ onOpenApp, onOpenPrivacy }: LandingPageProps) => {
               listening, instant translation, and daily practice drills.
             </Text>
           </Stack>
-          <Grid templateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }} columnGap={6} rowGap={{ base: 8, md: 8 }}>
+          <Grid templateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }} columnGap={6} rowGap={{ base: 8, md: 8 }}>
             {[
               {
                 title: 'Product',
@@ -760,7 +762,15 @@ const LandingPage = ({ onOpenApp, onOpenPrivacy }: LandingPageProps) => {
                 links: [
                   { label: 'Getting started', onClick: onOpenApp },
                   { label: 'Privacy', onClick: onOpenPrivacy },
-                  { label: 'Contact', onClick: onOpenApp },
+                ],
+              },
+              {
+                title: 'Contact',
+                links: [
+                  { label: 'Email', href: 'mailto:etiennetuyihamye@gmail.com', icon: FiMail },
+                  { label: 'WhatsApp', href: 'https://wa.me/250782556011', icon: FaWhatsapp },
+                  { label: 'WhatsApp (alt)', href: 'https://wa.me/250724007524', icon: FaWhatsapp },
+                  { label: 'GitHub', href: 'https://github.com/etienne0114', icon: FaGithub },
                 ],
               },
             ].map((col) => (
@@ -775,21 +785,40 @@ const LandingPage = ({ onOpenApp, onOpenPrivacy }: LandingPageProps) => {
                 >
                   {col.title}
                 </Text>
-                {col.links.map((l) => (
-                  <Link
-                    key={l.label}
-                    as="button"
-                    type="button"
-                    onClick={l.onClick}
-                    textAlign="left"
-                    fontSize={{ base: 'md', md: 'sm' }}
-                    py={2}
-                    _hover={{ color: 'white', textDecoration: 'none' }}
-                    _focusVisible={{ outline: '2px solid', outlineColor: amber, outlineOffset: '2px', borderRadius: 'sm' }}
-                  >
-                    {l.label}
-                  </Link>
-                ))}
+                {col.links.map((l: any) =>
+                  l.href ? (
+                    <Link
+                      key={l.label}
+                      href={l.href}
+                      isExternal={!l.href.startsWith('mailto:')}
+                      textAlign="left"
+                      fontSize={{ base: 'md', md: 'sm' }}
+                      py={2}
+                      display="flex"
+                      alignItems="center"
+                      gap={2}
+                      _hover={{ color: 'white', textDecoration: 'none' }}
+                      _focusVisible={{ outline: '2px solid', outlineColor: amber, outlineOffset: '2px', borderRadius: 'sm' }}
+                    >
+                      {l.icon && <Icon as={l.icon} boxSize={4} flexShrink={0} />}
+                      {l.label}
+                    </Link>
+                  ) : (
+                    <Link
+                      key={l.label}
+                      as="button"
+                      type="button"
+                      onClick={l.onClick}
+                      textAlign="left"
+                      fontSize={{ base: 'md', md: 'sm' }}
+                      py={2}
+                      _hover={{ color: 'white', textDecoration: 'none' }}
+                      _focusVisible={{ outline: '2px solid', outlineColor: amber, outlineOffset: '2px', borderRadius: 'sm' }}
+                    >
+                      {l.label}
+                    </Link>
+                  ),
+                )}
               </Stack>
             ))}
           </Grid>
