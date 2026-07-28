@@ -14,11 +14,17 @@ import {
   SimpleGrid,
   Skeleton,
   Stack,
+  Table,
+  Tbody,
+  Td,
   Text,
+  Th,
+  Thead,
+  Tr,
   useToast,
 } from '@chakra-ui/react';
-import { ArrowBackIcon, CheckIcon } from '@chakra-ui/icons';
-import { FiBookOpen, FiClock, FiUsers, FiCheckCircle, FiChevronRight, FiVolume2 } from 'react-icons/fi';
+import { ArrowBackIcon, CheckIcon, CloseIcon } from '@chakra-ui/icons';
+import { FiBookOpen, FiClock, FiUsers, FiCheckCircle, FiChevronRight, FiVolume2, FiAlertTriangle } from 'react-icons/fi';
 import { fetchCourses, fetchCourse, enrollCourse, trackProgress } from '../../api/learn';
 import {
   ink,
@@ -53,11 +59,36 @@ interface PhraseItem {
   pronunciation?: string;
 }
 
+interface StructureItem {
+  label: string;
+  pattern: string;
+  example: string;
+}
+
+interface PracticeQuestion {
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation?: string;
+}
+
 interface LessonSection {
-  type: 'phrases' | 'tip';
+  type: 'phrases' | 'tip' | 'rule' | 'structure' | 'table' | 'practice';
   title: string;
+  // phrases
   items?: PhraseItem[];
+  // tip
   body?: string;
+  variant?: 'info' | 'warning';
+  // rule
+  points?: string[];
+  // structure
+  structureItems?: StructureItem[];
+  // table
+  headers?: string[];
+  rows?: string[][];
+  // practice
+  questions?: PracticeQuestion[];
 }
 
 interface LessonDetail {
@@ -79,6 +110,72 @@ interface CourseDetail extends CourseSummary {
 
 const levelColor = (level?: string) =>
   level === 'BEGINNER' ? { bg: sageTint, color: sageDeep } : level === 'INTERMEDIATE' ? { bg: amberTint, color: amberDeep } : { bg: roseTint, color: roseDeep };
+
+/* ---------------- Interactive practice block ---------------- */
+// Immediate, per-question feedback (not a delayed batch report) — this is
+// embedded IN a lesson to reinforce what was just read, not a formal
+// graded assessment like the Practice section's Quiz mode.
+const PracticeBlock = ({ questions }: { questions: PracticeQuestion[] }) => {
+  const [answers, setAnswers] = useState<Record<number, number>>({});
+
+  return (
+    <Stack spacing={4}>
+      {questions.map((q, qIdx) => {
+        const selected = answers[qIdx];
+        const answered = selected !== undefined;
+        const isCorrect = answered && selected === q.correctIndex;
+        return (
+          <Box key={qIdx} bg={card} border="1px solid" borderColor={line} borderRadius="xl" p={4}>
+            <Text fontWeight="600" color={ink} mb={3} fontSize="sm">
+              {qIdx + 1}. {q.question}
+            </Text>
+            <Stack spacing={2}>
+              {q.options.map((opt, optIdx) => {
+                const isSelected = selected === optIdx;
+                const revealCorrect = answered && optIdx === q.correctIndex;
+                const revealWrong = answered && isSelected && !isCorrect;
+                return (
+                  <HStack
+                    key={optIdx}
+                    as="button"
+                    type="button"
+                    disabled={answered}
+                    onClick={() => setAnswers((prev) => (prev[qIdx] !== undefined ? prev : { ...prev, [qIdx]: optIdx }))}
+                    px={4}
+                    py={2.5}
+                    borderRadius="lg"
+                    border="1px solid"
+                    borderColor={revealCorrect ? sage : revealWrong ? rose : line}
+                    bg={revealCorrect ? sageTint : revealWrong ? roseTint : 'white'}
+                    cursor={answered ? 'default' : 'pointer'}
+                    textAlign="left"
+                    w="full"
+                    _hover={!answered ? { borderColor: ink } : undefined}
+                  >
+                    {answered && (revealCorrect || revealWrong) && (
+                      <Icon as={revealCorrect ? CheckIcon : CloseIcon} boxSize={2.5} color={revealCorrect ? sageDeep : roseDeep} />
+                    )}
+                    <Text fontSize="sm" color={revealCorrect ? sageDeep : revealWrong ? roseDeep : ink} fontWeight={revealCorrect ? '700' : '500'}>
+                      {opt}
+                    </Text>
+                  </HStack>
+                );
+              })}
+            </Stack>
+            {answered && q.explanation && (
+              <HStack mt={3} spacing={2} align="flex-start" bg="white" borderRadius="lg" p={3}>
+                <Text fontSize="sm">{isCorrect ? '✅' : '💡'}</Text>
+                <Text fontSize="xs" color={inkSoft} lineHeight="1.7">
+                  {q.explanation}
+                </Text>
+              </HStack>
+            )}
+          </Box>
+        );
+      })}
+    </Stack>
+  );
+};
 
 /* ---------------- Lesson reader ---------------- */
 const LessonReader = ({
@@ -182,13 +279,73 @@ const LessonReader = ({
             </Stack>
           )}
           {section.type === 'tip' && (
-            <HStack bg={amberTint} borderRadius="xl" p={4} align="flex-start" spacing={3}>
-              <Text fontSize="lg">💡</Text>
+            <HStack bg={section.variant === 'warning' ? roseTint : amberTint} borderRadius="xl" p={4} align="flex-start" spacing={3}>
+              {section.variant === 'warning' ? (
+                <Icon as={FiAlertTriangle} boxSize={4} color={roseDeep} mt={0.5} flexShrink={0} />
+              ) : (
+                <Text fontSize="lg">💡</Text>
+              )}
               <Text fontSize="sm" color={ink} lineHeight="1.7">
                 {section.body}
               </Text>
             </HStack>
           )}
+          {section.type === 'rule' && section.points && (
+            <Stack spacing={2.5}>
+              {section.points.map((p, i) => (
+                <HStack key={i} align="flex-start" spacing={3}>
+                  <Circle size="6px" bg={rose} mt="7px" flexShrink={0} />
+                  <Text fontSize="sm" color={ink} lineHeight="1.7">
+                    {p}
+                  </Text>
+                </HStack>
+              ))}
+            </Stack>
+          )}
+          {section.type === 'structure' && section.structureItems && (
+            <Stack spacing={3}>
+              {section.structureItems.map((s, i) => (
+                <Box key={i} bg={card} borderRadius="xl" p={4}>
+                  <Badge bg={roseTint} color={roseDeep} borderRadius="full" px={2.5} py={0.5} fontSize="10px" mb={2}>
+                    {s.label}
+                  </Badge>
+                  <Text fontSize="sm" fontWeight="700" color={ink} fontFamily="mono" mb={1}>
+                    {s.pattern}
+                  </Text>
+                  <Text fontSize="sm" color={inkSoft} fontStyle="italic">
+                    {s.example}
+                  </Text>
+                </Box>
+              ))}
+            </Stack>
+          )}
+          {section.type === 'table' && section.headers && section.rows && (
+            <Box overflowX="auto">
+              <Table size="sm">
+                <Thead>
+                  <Tr>
+                    {section.headers.map((h, i) => (
+                      <Th key={i} color={inkSoft} borderColor={line} fontSize="10px">
+                        {h}
+                      </Th>
+                    ))}
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {section.rows.map((row, i) => (
+                    <Tr key={i}>
+                      {row.map((cell, j) => (
+                        <Td key={j} color={ink} borderColor={line} fontSize="sm">
+                          {cell}
+                        </Td>
+                      ))}
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </Box>
+          )}
+          {section.type === 'practice' && section.questions && <PracticeBlock questions={section.questions} />}
         </Box>
       ))}
 
@@ -284,6 +441,7 @@ const CourseDetailView = ({
   if (activeLesson) {
     return (
       <LessonReader
+        key={activeLesson.id}
         courseId={course.id}
         lesson={activeLesson}
         onBack={() => setActiveLesson(null)}
