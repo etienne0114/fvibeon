@@ -2,15 +2,19 @@ import { lazy, Suspense, useState } from 'react';
 import { Box, Skeleton, Stack, Text, useDisclosure } from '@chakra-ui/react';
 import HomeShell from '../../home/HomeShell';
 import Dashboard from '../../home/Dashboard';
-import CoursesView from '../../home/CoursesView';
 import ProfileModal from '../../home/profile/ProfileModal';
 
 // Heavy, rarely-first-visited panels load on demand to keep the initial
-// bundle (and first paint) small.
+// bundle (and first paint) small. CoursesView now pulls in Table/Accordion
+// and the full interactive practice renderer (rule/structure/table/
+// fill-blank sections) to render content-heavy courses — it was still
+// bundled eagerly even though Dashboard, not Courses, is the default
+// landing view.
 const TranslatorPanel = lazy(() => import('../translator/TranslatorPanel'));
 const PracticeView = lazy(() => import('../../home/practice/PracticeView'));
 const ReadingView = lazy(() => import('../../home/reading/ReadingView'));
 const ListeningView = lazy(() => import('../../home/listening/ListeningView'));
+const CoursesView = lazy(() => import('../../home/CoursesView'));
 
 const PanelFallback = () => (
   <Stack spacing={4}>
