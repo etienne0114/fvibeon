@@ -1,5 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Accordion,
+  AccordionButton,
+  AccordionIcon,
+  AccordionItem,
+  AccordionPanel,
   Alert,
   AlertIcon,
   Badge,
@@ -10,6 +15,7 @@ import {
   Grid,
   HStack,
   Icon,
+  Input,
   Progress,
   SimpleGrid,
   Skeleton,
@@ -66,9 +72,16 @@ interface StructureItem {
 }
 
 interface PracticeQuestion {
+  // Omitted type defaults to 'mc' — every question written before this
+  // field existed is still valid multiple-choice content.
+  type?: 'mc' | 'fill';
   question: string;
-  options: string[];
-  correctIndex: number;
+  // mc
+  options?: string[];
+  correctIndex?: number;
+  // fill
+  answer?: string;
+  acceptableAnswers?: string[];
   explanation?: string;
 }
 
@@ -111,68 +124,226 @@ interface CourseDetail extends CourseSummary {
 const levelColor = (level?: string) =>
   level === 'BEGINNER' ? { bg: sageTint, color: sageDeep } : level === 'INTERMEDIATE' ? { bg: amberTint, color: amberDeep } : { bg: roseTint, color: roseDeep };
 
+interface LessonGroup {
+  key: string;
+  label: string;
+  lessons: LessonDetail[];
+}
+
+// Lessons are grouped by the part of the title before " — " (e.g. "Present
+// Simple Tense — Beginner" / "— Elementary" / ...), so a course with many
+// leveled lessons per tense reads as tidy sections instead of one long
+// flat numbered list. A lesson with no " — " (like a comparison capstone)
+// becomes its own single-lesson group.
+const groupLessonsByTense = (lessons: LessonDetail[]): LessonGroup[] => {
+  const groups: LessonGroup[] = [];
+  for (const lesson of lessons) {
+    const [base] = lesson.title.split(' — ');
+    let group = groups.find((g) => g.key === base);
+    if (!group) {
+      group = { key: base, label: base, lessons: [] };
+      groups.push(group);
+    }
+    group.lessons.push(lesson);
+  }
+  return groups;
+};
+
+const LessonRow = ({ lesson, enrolled, onOpen }: { lesson: LessonDetail; enrolled: boolean; onOpen: () => void }) => {
+  const done = lesson.userStatus === 'COMPLETED';
+  return (
+    <Flex
+      as="button"
+      onClick={() => enrolled && onOpen()}
+      textAlign="left"
+      align="center"
+      gap={4}
+      bg="white"
+      border="1px solid"
+      borderColor={line}
+      borderRadius="xl"
+      p={4}
+      w="full"
+      opacity={enrolled ? 1 : 0.6}
+      cursor={enrolled ? 'pointer' : 'not-allowed'}
+      _hover={enrolled ? { transform: 'translateY(-1px)', boxShadow: '0 8px 16px rgba(46,31,38,0.07)' } : {}}
+      transition="all 0.15s ease"
+    >
+      <Circle size="38px" bg={done ? sage : roseTint} color={done ? 'white' : rose} fontWeight="700" fontSize="sm" flexShrink={0}>
+        {done ? <CheckIcon boxSize={3} /> : lesson.order}
+      </Circle>
+      <Box flex={1} minW={0}>
+        <Text fontSize="sm" fontWeight="700" color={ink} noOfLines={1}>
+          {lesson.title}
+        </Text>
+        <Text fontSize="xs" color={inkSoft} noOfLines={1}>
+          {lesson.description}
+        </Text>
+      </Box>
+      <HStack spacing={3} flexShrink={0}>
+        <Text fontSize="xs" color={inkSoft} display={{ base: 'none', sm: 'block' }}>
+          {lesson.duration} min
+        </Text>
+        {enrolled && <Icon as={FiChevronRight} color={inkSoft} />}
+      </HStack>
+    </Flex>
+  );
+};
+
 /* ---------------- Interactive practice block ---------------- */
 // Immediate, per-question feedback (not a delayed batch report) — this is
 // embedded IN a lesson to reinforce what was just read, not a formal
 // graded assessment like the Practice section's Quiz mode.
+interface PracticeAnswer {
+  value: string | number;
+  correct: boolean;
+}
+
+const normalizeFillAnswer = (s: string) =>
+  s
+    .trim()
+    .toLowerCase()
+    .replace(/[.!?]+$/, '');
+
 const PracticeBlock = ({ questions }: { questions: PracticeQuestion[] }) => {
-  const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [answers, setAnswers] = useState<Record<number, PracticeAnswer>>({});
+  const [drafts, setDrafts] = useState<Record<number, string>>({});
+
+  const answeredCount = Object.keys(answers).length;
+  const correctCount = Object.values(answers).filter((a) => a.correct).length;
+  const allAnswered = questions.length > 0 && answeredCount === questions.length;
+
+  const selectOption = (qIdx: number, optIdx: number, q: PracticeQuestion) => {
+    if (answers[qIdx]) return;
+    setAnswers((prev) => ({ ...prev, [qIdx]: { value: optIdx, correct: optIdx === q.correctIndex } }));
+  };
+
+  const submitFill = (qIdx: number, q: PracticeQuestion) => {
+    const typed = drafts[qIdx] || '';
+    if (!typed.trim()) return;
+    const accepted = [q.answer, ...(q.acceptableAnswers || [])].filter(Boolean).map((a) => normalizeFillAnswer(a as string));
+    const correct = accepted.includes(normalizeFillAnswer(typed));
+    setAnswers((prev) => ({ ...prev, [qIdx]: { value: typed, correct } }));
+  };
+
+  const retryQuestion = (qIdx: number) => {
+    setAnswers((prev) => {
+      const next = { ...prev };
+      delete next[qIdx];
+      return next;
+    });
+    setDrafts((prev) => ({ ...prev, [qIdx]: '' }));
+  };
+
+  const resetAll = () => {
+    setAnswers({});
+    setDrafts({});
+  };
 
   return (
     <Stack spacing={4}>
+      {questions.length > 1 && (
+        <Flex justify="space-between" align="center" fontSize="xs" color={inkSoft} fontWeight="600">
+          <Text>{answeredCount}/{questions.length} answered</Text>
+          {answeredCount > 0 && <Text>{correctCount}/{answeredCount} correct so far</Text>}
+        </Flex>
+      )}
       {questions.map((q, qIdx) => {
-        const selected = answers[qIdx];
-        const answered = selected !== undefined;
-        const isCorrect = answered && selected === q.correctIndex;
+        const type = q.type || 'mc';
+        const result = answers[qIdx];
+        const answered = Boolean(result);
         return (
           <Box key={qIdx} bg={card} border="1px solid" borderColor={line} borderRadius="xl" p={4}>
             <Text fontWeight="600" color={ink} mb={3} fontSize="sm">
               {qIdx + 1}. {q.question}
             </Text>
-            <Stack spacing={2}>
-              {q.options.map((opt, optIdx) => {
-                const isSelected = selected === optIdx;
-                const revealCorrect = answered && optIdx === q.correctIndex;
-                const revealWrong = answered && isSelected && !isCorrect;
-                return (
-                  <HStack
-                    key={optIdx}
-                    as="button"
-                    type="button"
-                    disabled={answered}
-                    onClick={() => setAnswers((prev) => (prev[qIdx] !== undefined ? prev : { ...prev, [qIdx]: optIdx }))}
-                    px={4}
-                    py={2.5}
-                    borderRadius="lg"
-                    border="1px solid"
-                    borderColor={revealCorrect ? sage : revealWrong ? rose : line}
-                    bg={revealCorrect ? sageTint : revealWrong ? roseTint : 'white'}
-                    cursor={answered ? 'default' : 'pointer'}
-                    textAlign="left"
-                    w="full"
-                    _hover={!answered ? { borderColor: ink } : undefined}
-                  >
-                    {answered && (revealCorrect || revealWrong) && (
-                      <Icon as={revealCorrect ? CheckIcon : CloseIcon} boxSize={2.5} color={revealCorrect ? sageDeep : roseDeep} />
-                    )}
-                    <Text fontSize="sm" color={revealCorrect ? sageDeep : revealWrong ? roseDeep : ink} fontWeight={revealCorrect ? '700' : '500'}>
-                      {opt}
-                    </Text>
-                  </HStack>
-                );
-              })}
-            </Stack>
+            {type === 'fill' ? (
+              <Stack spacing={2}>
+                <HStack>
+                  <Input
+                    size="sm"
+                    bg="white"
+                    isDisabled={answered}
+                    value={answered ? String(result.value) : drafts[qIdx] || ''}
+                    onChange={(e) => setDrafts((prev) => ({ ...prev, [qIdx]: e.target.value }))}
+                    onKeyDown={(e) => e.key === 'Enter' && !answered && submitFill(qIdx, q)}
+                    placeholder="Type your answer..."
+                    borderColor={answered ? (result.correct ? sage : rose) : line}
+                    _focus={{ borderColor: ink, boxShadow: 'none' }}
+                  />
+                  {!answered && (
+                    <Button size="sm" flexShrink={0} bg={ink} color="white" _hover={{ bg: '#463039' }} onClick={() => submitFill(qIdx, q)}>
+                      Check
+                    </Button>
+                  )}
+                </HStack>
+                {answered && !result.correct && (
+                  <Text fontSize="xs" color={roseDeep}>
+                    Correct answer: <Text as="span" fontWeight="700">{q.answer}</Text>
+                  </Text>
+                )}
+              </Stack>
+            ) : (
+              <Stack spacing={2}>
+                {(q.options || []).map((opt, optIdx) => {
+                  const isSelected = answered && result.value === optIdx;
+                  const revealCorrect = answered && optIdx === q.correctIndex;
+                  const revealWrong = answered && isSelected && !result.correct;
+                  return (
+                    <HStack
+                      key={optIdx}
+                      as="button"
+                      type="button"
+                      disabled={answered}
+                      onClick={() => selectOption(qIdx, optIdx, q)}
+                      px={4}
+                      py={2.5}
+                      borderRadius="lg"
+                      border="1px solid"
+                      borderColor={revealCorrect ? sage : revealWrong ? rose : line}
+                      bg={revealCorrect ? sageTint : revealWrong ? roseTint : 'white'}
+                      cursor={answered ? 'default' : 'pointer'}
+                      textAlign="left"
+                      w="full"
+                      _hover={!answered ? { borderColor: ink } : undefined}
+                    >
+                      {answered && (revealCorrect || revealWrong) && (
+                        <Icon as={revealCorrect ? CheckIcon : CloseIcon} boxSize={2.5} color={revealCorrect ? sageDeep : roseDeep} />
+                      )}
+                      <Text fontSize="sm" color={revealCorrect ? sageDeep : revealWrong ? roseDeep : ink} fontWeight={revealCorrect ? '700' : '500'}>
+                        {opt}
+                      </Text>
+                    </HStack>
+                  );
+                })}
+              </Stack>
+            )}
             {answered && q.explanation && (
               <HStack mt={3} spacing={2} align="flex-start" bg="white" borderRadius="lg" p={3}>
-                <Text fontSize="sm">{isCorrect ? '✅' : '💡'}</Text>
+                <Text fontSize="sm">{result.correct ? '✅' : '💡'}</Text>
                 <Text fontSize="xs" color={inkSoft} lineHeight="1.7">
                   {q.explanation}
                 </Text>
               </HStack>
             )}
+            {answered && (
+              <Button size="xs" variant="ghost" mt={2} color={inkSoft} onClick={() => retryQuestion(qIdx)}>
+                Try again
+              </Button>
+            )}
           </Box>
         );
       })}
+      {allAnswered && questions.length > 1 && (
+        <Box bg={correctCount === questions.length ? sageTint : amberTint} borderRadius="xl" p={4} textAlign="center">
+          <Text fontWeight="700" color={ink}>
+            {correctCount}/{questions.length} correct{correctCount === questions.length ? ' 🎉' : ''}
+          </Text>
+          <Button size="sm" mt={2} variant="outline" borderColor={line} color={inkSoft} _hover={{ borderColor: ink, color: ink }} onClick={resetAll}>
+            Reset practice
+          </Button>
+        </Box>
+      )}
     </Stack>
   );
 };
@@ -390,6 +561,10 @@ const CourseDetailView = ({
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState(false);
   const toast = useToast();
+  // Computed unconditionally (before any early return below) — hooks can't
+  // be called only on some renders, so this can't wait until after the
+  // "!course" / "activeLesson" guards.
+  const lessonGroups = useMemo(() => groupLessonsByTense(course?.lessons || []), [course]);
 
   const load = useCallback(async () => {
     try {
@@ -527,46 +702,45 @@ const CourseDetailView = ({
         </Flex>
       </Box>
 
-      {/* Lessons */}
+      {/* Lessons — grouped by tense into collapsible sections instead of
+          one long flat numbered list */}
       <Stack spacing={3}>
-        {course.lessons.map((lesson) => {
-          const done = lesson.userStatus === 'COMPLETED';
+        {lessonGroups.map((group) => {
+          if (group.lessons.length === 1) {
+            return <LessonRow key={group.key} lesson={group.lessons[0]} enrolled={enrolled} onOpen={() => setActiveLesson(group.lessons[0])} />;
+          }
+          const completedInGroup = group.lessons.filter((l) => l.userStatus === 'COMPLETED').length;
           return (
-            <Flex
-              key={lesson.id}
-              as="button"
-              onClick={() => enrolled && setActiveLesson(lesson)}
-              textAlign="left"
-              align="center"
-              gap={4}
-              bg="white"
-              border="1px solid"
-              borderColor={line}
-              borderRadius="xl"
-              p={4}
-              opacity={enrolled ? 1 : 0.6}
-              cursor={enrolled ? 'pointer' : 'not-allowed'}
-              _hover={enrolled ? { transform: 'translateY(-1px)', boxShadow: '0 8px 16px rgba(46,31,38,0.07)' } : {}}
-              transition="all 0.15s ease"
-            >
-              <Circle size="38px" bg={done ? sage : roseTint} color={done ? 'white' : rose} fontWeight="700" fontSize="sm">
-                {done ? <CheckIcon boxSize={3} /> : lesson.order}
-              </Circle>
-              <Box flex={1} minW={0}>
-                <Text fontSize="sm" fontWeight="700" color={ink} noOfLines={1}>
-                  {lesson.title}
-                </Text>
-                <Text fontSize="xs" color={inkSoft} noOfLines={1}>
-                  {lesson.description}
-                </Text>
-              </Box>
-              <HStack spacing={3} flexShrink={0}>
-                <Text fontSize="xs" color={inkSoft} display={{ base: 'none', sm: 'block' }}>
-                  {lesson.duration} min
-                </Text>
-                {enrolled && <Icon as={FiChevronRight} color={inkSoft} />}
-              </HStack>
-            </Flex>
+            <Accordion key={group.key} allowToggle defaultIndex={0}>
+              <AccordionItem border="none">
+                <AccordionButton bg={card} borderRadius="lg" px={4} py={3} _hover={{ bg: card }}>
+                  <HStack flex={1} justify="space-between" pr={2}>
+                    <Text fontFamily={serif} fontWeight="600" color={ink} fontSize="sm" textAlign="left">
+                      {group.label}
+                    </Text>
+                    <Badge
+                      bg={completedInGroup === group.lessons.length ? sageTint : 'white'}
+                      color={completedInGroup === group.lessons.length ? sageDeep : inkSoft}
+                      border="1px solid"
+                      borderColor={line}
+                      borderRadius="full"
+                      px={2}
+                      fontSize="10px"
+                    >
+                      {completedInGroup}/{group.lessons.length}
+                    </Badge>
+                  </HStack>
+                  <AccordionIcon color={inkSoft} />
+                </AccordionButton>
+                <AccordionPanel pt={3} pb={0} px={0}>
+                  <Stack spacing={2}>
+                    {group.lessons.map((lesson) => (
+                      <LessonRow key={lesson.id} lesson={lesson} enrolled={enrolled} onOpen={() => setActiveLesson(lesson)} />
+                    ))}
+                  </Stack>
+                </AccordionPanel>
+              </AccordionItem>
+            </Accordion>
           );
         })}
       </Stack>
