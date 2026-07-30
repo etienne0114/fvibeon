@@ -39,11 +39,13 @@ import {
   FiMail,
   FiCalendar,
   FiChevronDown,
+  FiShield,
 } from 'react-icons/fi';
 import { MeUser } from '../../../hooks/useMe';
 import { DashboardSummary } from '../../../hooks/useDashboard';
 import { updateProfile, changePassword } from '../../../api/auth';
 import { ink, inkSoft, rose, roseDeep, card, line, serif, sage, sageDeep, roseTint, sageTint, amber, amberTint, cream } from '../../../theme/brand';
+import PrivacySections from '../../legal/PrivacySections';
 
 const LANGS = [
   { id: 'en', label: 'English' },
@@ -58,13 +60,14 @@ const LEVELS = [
   { id: 'ADVANCED', label: 'Advanced' },
 ];
 
-type Section = 'overview' | 'learning' | 'account' | 'security';
+type Section = 'overview' | 'learning' | 'account' | 'security' | 'privacy';
 
 const NAV: { id: Section; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', icon: FiUser },
   { id: 'learning', label: 'Learning', icon: FiBookOpen },
   { id: 'account', label: 'Account', icon: FiMail },
   { id: 'security', label: 'Security', icon: FiLock },
+  { id: 'privacy', label: 'Privacy', icon: FiShield },
 ];
 
 const formatMinutes = (mins: number) => {
@@ -252,9 +255,9 @@ const ProfileModal = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} isCentered size={{ base: 'full', md: '2xl' }} scrollBehavior="inside">
+    <Modal isOpen={isOpen} onClose={onClose} isCentered size={{ base: 'full', md: '3xl' }} scrollBehavior="inside">
       <ModalOverlay bg="rgba(46,31,38,0.55)" backdropFilter="blur(2px)" />
-      <ModalContent borderRadius={{ base: 0, md: '2xl' }} overflow="hidden" maxH={{ base: '100vh', md: '620px' }}>
+      <ModalContent borderRadius={{ base: 0, md: '2xl' }} overflow="hidden" maxH={{ base: '100vh', md: '660px' }}>
         <ModalCloseButton color={{ base: 'white', md: ink }} zIndex={2} top={3} right={3} />
         <ModalBody p={0}>
           <Flex direction={{ base: 'column', md: 'row' }} minH={{ md: '620px' }}>
@@ -285,7 +288,7 @@ const ProfileModal = ({
                   with no horizontal scroll to discover (a scrolling row cut
                   "Security" off-screen with no visible affordance to reach it).
                   Desktop: the familiar vertical sidebar list. */}
-              <SimpleGrid columns={4} spacing={1} display={{ base: 'grid', md: 'none' }}>
+              <SimpleGrid columns={NAV.length} spacing={1} display={{ base: 'grid', md: 'none' }}>
                 {NAV.map((item) => {
                   const active = item.id === section;
                   return (
@@ -596,6 +599,15 @@ const ProfileModal = ({
                     <Icon as={FiCheckCircle} />
                     <Text>Your password is never shown or shared — it's stored securely, hashed.</Text>
                   </HStack>
+                </Stack>
+              )}
+
+              {section === 'privacy' && (
+                <Stack spacing={5} maxW="520px">
+                  <Text fontFamily={serif} fontWeight="700" fontSize="xl" color={ink}>
+                    Privacy
+                  </Text>
+                  <PrivacySections />
                 </Stack>
               )}
             </Box>
