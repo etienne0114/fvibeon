@@ -1,8 +1,32 @@
-import { Stack, Text } from '@chakra-ui/react';
+import { Box, Stack, Text } from '@chakra-ui/react';
 import { ink, inkSoft, serif } from '../../theme/brand';
 
-const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <Stack spacing={2}>
+export interface PrivacySectionMeta {
+  id: string;
+  title: string;
+}
+
+// Exported so the full-page layout can build a table of contents that
+// links to the exact same sections rendered below — one source of truth
+// for both the section list and the section content.
+export const PRIVACY_SECTIONS: PrivacySectionMeta[] = [
+  { id: 'what-this-covers', title: 'What this policy covers' },
+  { id: 'what-we-collect', title: 'What information we collect' },
+  { id: 'how-we-use-it', title: 'How we use your information' },
+  { id: 'legal-basis', title: 'Why we process your information' },
+  { id: 'sharing', title: 'How we share information with third parties' },
+  { id: 'retention', title: 'How long we keep your information' },
+  { id: 'transfers', title: 'How we transfer information internationally' },
+  { id: 'your-rights', title: 'How you can manage, access, or delete your information' },
+  { id: 'legal-requests', title: 'How we respond to legal requests' },
+  { id: 'cookies', title: 'Cookies & local storage' },
+  { id: 'children', title: 'Children' },
+  { id: 'changes', title: 'How you\'ll know if this policy changes' },
+  { id: 'contact', title: 'How to contact us' },
+];
+
+const Section = ({ id, title, children }: { id: string; title: string; children: React.ReactNode }) => (
+  <Stack id={id} spacing={2} scrollMarginTop="90px">
     <Text fontFamily={serif} fontWeight="700" fontSize="lg" color={ink}>
       {title}
     </Text>
@@ -17,12 +41,15 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
 // modal's Privacy tab, so the two can never drift out of sync.
 const PrivacySections = () => (
   <Stack spacing={8}>
-    <Text color={inkSoft} fontSize="sm" lineHeight="1.8">
-      Vibeon Learn is a language-learning app. This explains, plainly, what information we collect,
-      why, and how it's handled. We don't sell personal data, and we don't run advertising trackers.
-    </Text>
+    <Section id="what-this-covers" title="What this policy covers">
+      <Text>
+        Vibeon Learn is a language-learning app. This explains, plainly, what information we
+        collect, why, how it's shared (and with whom), how long we keep it, and the choices you
+        have over it. We don't sell personal data, and we don't run advertising trackers.
+      </Text>
+    </Section>
 
-    <Section title="What we collect">
+    <Section id="what-we-collect" title="What information we collect">
       <Text>
         <Text as="span" fontWeight="600" color={ink}>
           Account information:
@@ -47,9 +74,17 @@ const PrivacySections = () => (
         is processed to produce a text transcription and a score. The audio itself is not saved as a
         file — only the resulting text and accuracy result are stored against your account.
       </Text>
+      <Text>
+        <Text as="span" fontWeight="600" color={ink}>
+          Technical information:
+        </Text>{' '}
+        basic request metadata (like timestamps) that our hosting provider generates as part of
+        normally running a web service — we don't do our own separate analytics or device
+        fingerprinting.
+      </Text>
     </Section>
 
-    <Section title="How we use it">
+    <Section id="how-we-use-it" title="How we use your information">
       <Text>To run the product: track your progress, schedule reviews, and personalize what you practice next.</Text>
       <Text>
         To generate practice content and feedback — quiz questions, roleplay replies, grammar
@@ -57,43 +92,95 @@ const PrivacySections = () => (
         OpenRouter/DeepSeek) and by open dictionary and translation services.
       </Text>
       <Text>To send account emails you've asked for: email verification codes and password reset codes.</Text>
+      <Text>To keep the service secure — for example, rate-limiting repeated login attempts.</Text>
     </Section>
 
-    <Section title="Where it's stored">
+    <Section id="legal-basis" title="Why we process your information">
       <Text>
-        Your data lives in a PostgreSQL database (hosted on Supabase, in the EU). It is not shared
-        with data brokers or advertisers.
+        We process account and learning data because it's necessary to provide the service you
+        signed up for (performance of a contract) — spaced repetition, progress tracking, and AI
+        feedback simply don't work without it. Where we have a choice about optional data (like your
+        name), we rely on the fact that you chose to provide it.
       </Text>
     </Section>
 
-    <Section title="Third-party services we use">
-      <Text>• OpenRouter/DeepSeek — generates AI practice content and tutoring feedback from text you send it.</Text>
-      <Text>• Open dictionary and translation services (e.g. Wiktionary, Datamuse, a free dictionary API) — word definitions and translations.</Text>
-      <Text>• Resend and Gmail SMTP — deliver verification and password-reset emails.</Text>
-      <Text>None of these are used for advertising, and none receive your password.</Text>
+    <Section id="sharing" title="How we share information with third parties">
+      <Text>
+        We don't sell your data, and we don't share it with advertisers or data brokers. We do send
+        limited data to a small number of processors strictly to run the features you use:
+      </Text>
+      <Text>• OpenRouter/DeepSeek — receives the text you send it (chat messages, transcriptions) to generate AI replies, corrections, and content.</Text>
+      <Text>• Open dictionary and translation services (e.g. Wiktionary, Datamuse, a free dictionary API) — receive words/phrases to look up definitions and translations.</Text>
+      <Text>• Resend and Gmail SMTP — receive your email address to deliver verification and password-reset codes.</Text>
+      <Text>None of these processors receive your password, and none are permitted to use your data for their own advertising.</Text>
     </Section>
 
-    <Section title="Cookies & local storage">
+    <Section id="retention" title="How long we keep your information">
+      <Text>
+        We keep your account and learning data for as long as your account is active, so your
+        progress and history stay intact. If you ask us to delete your account, we delete your
+        personal data — learning history, profile details, and credentials — except where we're
+        required to keep something for a short period to comply with the law (for example, basic
+        records needed to resolve a dispute).
+      </Text>
+    </Section>
+
+    <Section id="transfers" title="How we transfer information internationally">
+      <Text>
+        Your account and learning data are stored in a PostgreSQL database hosted by Supabase in the
+        EU (Frankfurt). Some of the processors we use to power features — like the AI model provider
+        and email delivery — may process data on servers outside the EU/EEA. Where that happens, we
+        only send the minimum data those services need to do their specific job (e.g. the text of a
+        message, not your full profile).
+      </Text>
+    </Section>
+
+    <Section id="your-rights" title="How you can manage, access, or delete your information">
+      <Text>
+        You can update your profile and learning preferences at any time from your account menu in
+        the app. Beyond that, you can ask us to:
+      </Text>
+      <Text>• Send you a copy of the personal data we hold about you.</Text>
+      <Text>• Correct anything that's inaccurate.</Text>
+      <Text>• Delete your account and personal data.</Text>
+      <Text>• Stop processing your data in a particular way, where applicable.</Text>
+      <Text>Reach out through the contact details below and we'll handle it directly — no automated runaround.</Text>
+    </Section>
+
+    <Section id="legal-requests" title="How we respond to legal requests">
+      <Text>
+        We only disclose personal data in response to a legal request (like a court order) if we
+        believe in good faith that the law requires it, and we'll always look for ways to limit what
+        we hand over to the minimum the request actually requires.
+      </Text>
+    </Section>
+
+    <Section id="cookies" title="Cookies & local storage">
       <Text>
         We use your browser's local storage to keep a sign-in token so you stay logged in — that's
         it. No third-party advertising or tracking cookies.
       </Text>
     </Section>
 
-    <Section title="Your choices">
-      <Text>
-        You can update your profile and learning preferences at any time from your account menu in
-        the app. To request a copy of your data or full account deletion, reach out through the app
-        — we'll handle it directly.
-      </Text>
-    </Section>
-
-    <Section title="Children">
+    <Section id="children" title="Children">
       <Text>Vibeon Learn is not directed at children under 13, and we don't knowingly collect data from them.</Text>
     </Section>
 
-    <Section title="Changes to this policy">
-      <Text>If this policy changes in a way that matters, we'll update the date at the top of this page.</Text>
+    <Section id="changes" title="How you'll know if this policy changes">
+      <Text>
+        If this policy changes in a way that matters, we'll update the date at the top of this page.
+        We don't make silent, retroactive changes to how we handle data you've already given us.
+      </Text>
+    </Section>
+
+    <Section id="contact" title="How to contact us">
+      <Text>
+        For any privacy question, data request, or concern, email{' '}
+        <Text as="span" fontWeight="600" color={ink}>
+          etiennetuyihamye@gmail.com
+        </Text>{' '}
+        — a real inbox we read, not a support ticket queue.
+      </Text>
     </Section>
   </Stack>
 );
