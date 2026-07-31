@@ -30,8 +30,10 @@ import {
   useToast,
 } from '@chakra-ui/react';
 import { ArrowBackIcon, CheckIcon, CloseIcon } from '@chakra-ui/icons';
-import { FiBookOpen, FiClock, FiUsers, FiCheckCircle, FiChevronRight, FiVolume2, FiAlertTriangle } from 'react-icons/fi';
+import { FiBookOpen, FiClock, FiUsers, FiCheckCircle, FiChevronRight, FiVolume2, FiAlertTriangle, FiAward } from 'react-icons/fi';
 import { fetchCourses, fetchCourse, enrollCourse, trackProgress } from '../../api/learn';
+import { useMe } from '../../hooks/useMe';
+import CertificateModal from '../certificates/CertificateModal';
 import {
   ink,
   inkSoft,
@@ -560,7 +562,10 @@ const CourseDetailView = ({
   const [activeLesson, setActiveLesson] = useState<LessonDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState(false);
+  const [showCertificate, setShowCertificate] = useState(false);
   const toast = useToast();
+  const { user } = useMe();
+  const recipientName = user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.username || 'Learner';
   // Computed unconditionally (before any early return below) — hooks can't
   // be called only on some renders, so this can't wait until after the
   // "!course" / "activeLesson" guards.
@@ -683,6 +688,21 @@ const CourseDetailView = ({
                   bg="rgba(194,69,96,0.15)"
                   sx={{ '& > div': { background: roseDeep } }}
                 />
+                {course.enrollment?.isCompleted && (
+                  <Button
+                    mt={3}
+                    size="sm"
+                    w="full"
+                    borderRadius="full"
+                    bg={ink}
+                    color="white"
+                    leftIcon={<FiAward />}
+                    _hover={{ bg: '#463039' }}
+                    onClick={() => setShowCertificate(true)}
+                  >
+                    Get certificate
+                  </Button>
+                )}
               </Box>
             ) : (
               <Button
@@ -749,6 +769,7 @@ const CourseDetailView = ({
           Enroll to unlock the lessons.
         </Text>
       )}
+      <CertificateModal isOpen={showCertificate} onClose={() => setShowCertificate(false)} courseId={course.id} recipient={recipientName} />
     </Stack>
   );
 };

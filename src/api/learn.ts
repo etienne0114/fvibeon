@@ -40,3 +40,26 @@ export async function fetchMe() {
   const response = await client.get('/auth/me');
   return response.data;
 }
+
+export interface Certificate {
+  id: string;
+  courseId: string | null;
+  title: string;
+  description: string | null;
+  type: string;
+  status: string;
+  issuerName: string;
+  issueDate: string;
+  verifyCode: string;
+  metadata?: { courseTitle?: string; finalScore?: number; achievements?: string[] } | null;
+}
+
+export async function fetchMyCertificates(): Promise<Certificate[]> {
+  const response = await client.get('/certificates');
+  return response.data.data;
+}
+
+export async function fetchCourseCertificate(courseId: string): Promise<Certificate> {
+  const response = await client.get(`/certificates/course/${courseId}`);
+  return response.data.data;
+}

@@ -44,8 +44,10 @@ import {
 import { MeUser } from '../../../hooks/useMe';
 import { DashboardSummary } from '../../../hooks/useDashboard';
 import { updateProfile, changePassword } from '../../../api/auth';
+import { fetchMyCertificates, type Certificate } from '../../../api/learn';
 import { ink, inkSoft, rose, roseDeep, card, line, serif, sage, sageDeep, roseTint, sageTint, amber, amberTint, cream } from '../../../theme/brand';
 import PrivacySections from '../../legal/PrivacySections';
+import CertificateModal from '../../certificates/CertificateModal';
 
 const LANGS = [
   { id: 'en', label: 'English' },
@@ -178,6 +180,19 @@ const ProfileModal = ({
   const [showPasswords, setShowPasswords] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [changingPassword, setChangingPassword] = useState(false);
+
+  const [certificates, setCertificates] = useState<Certificate[]>([]);
+  const [loadingCertificates, setLoadingCertificates] = useState(false);
+  const [viewingCertificate, setViewingCertificate] = useState<Certificate | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setLoadingCertificates(true);
+    fetchMyCertificates()
+      .then(setCertificates)
+      .catch(() => setCertificates([]))
+      .finally(() => setLoadingCertificates(false));
+  }, [isOpen]);
 
   useEffect(() => {
     if (!user) return;
@@ -471,6 +486,50 @@ const ProfileModal = ({
                   >
                     Save preferences
                   </Button>
+
+                  <Divider />
+
+                  <Text fontFamily={serif} fontWeight="700" fontSize="lg" color={ink}>
+                    Certificates
+                  </Text>
+                  {loadingCertificates && (
+                    <Text fontSize="sm" color={inkSoft}>
+                      Loading...
+                    </Text>
+                  )}
+                  {!loadingCertificates && certificates.length === 0 && (
+                    <Text fontSize="sm" color={inkSoft}>
+                      Complete a course to earn your first certificate.
+                    </Text>
+                  )}
+                  {!loadingCertificates && certificates.length > 0 && (
+                    <Stack spacing={2}>
+                      {certificates.map((c) => (
+                        <HStack
+                          key={c.id}
+                          as="button"
+                          onClick={() => setViewingCertificate(c)}
+                          justify="space-between"
+                          bg={card}
+                          border="1px solid"
+                          borderColor={line}
+                          borderRadius="lg"
+                          p={3}
+                          _hover={{ borderColor: rose }}
+                        >
+                          <HStack spacing={3}>
+                            <Icon as={FiAward} color={rose} />
+                            <Text fontSize="sm" fontWeight="600" color={ink} textAlign="left">
+                              {c.metadata?.courseTitle || c.title}
+                            </Text>
+                          </HStack>
+                          <Text fontSize="xs" color={inkSoft}>
+                            {new Date(c.issueDate).toLocaleDateString()}
+                          </Text>
+                        </HStack>
+                      ))}
+                    </Stack>
+                  )}
                 </Stack>
               )}
 
@@ -614,6 +673,14 @@ const ProfileModal = ({
           </Flex>
         </ModalBody>
       </ModalContent>
+      {viewingCertificate && (
+        <CertificateModal
+          isOpen={Boolean(viewingCertificate)}
+          onClose={() => setViewingCertificate(null)}
+          certificate={viewingCertificate}
+          recipient={displayName}
+        />
+      )}
     </Modal>
   );
 };

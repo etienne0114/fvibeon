@@ -3,7 +3,15 @@ import AuthPage, { AuthMode } from './features/auth/AuthPage';
 import LandingPage from './features/landing/LandingPage';
 import LearnHome from './features/learn/home/LearnHome';
 import PrivacyPolicyPage from './features/legal/PrivacyPolicyPage';
+import CertificateVerifyPage from './features/certificates/CertificateVerifyPage';
 import { useAuth } from './hooks';
+
+const getVerifyCode = () => {
+  if (typeof window === 'undefined') return null;
+  const [hashPath, hashQuery] = window.location.hash.slice(1).split('?');
+  if (hashPath !== 'verify-certificate') return null;
+  return new URLSearchParams(hashQuery || '').get('code');
+};
 
 const App = () => {
   const [mode, setMode] = useState<AuthMode>('login');
@@ -11,6 +19,7 @@ const App = () => {
     () => typeof window !== 'undefined' && window.location.hash === '#auth',
   );
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [verifyCode, setVerifyCode] = useState(getVerifyCode);
   const {
     token,
     authenticate,
@@ -41,6 +50,18 @@ const App = () => {
   };
 
   const handleModeToggle = () => setMode((prev) => (prev === 'login' ? 'register' : 'login'));
+
+  if (verifyCode) {
+    return (
+      <CertificateVerifyPage
+        code={verifyCode}
+        onBack={() => {
+          window.location.hash = '';
+          setVerifyCode(null);
+        }}
+      />
+    );
+  }
 
   if (!token && showPrivacy) {
     return <PrivacyPolicyPage onBack={() => setShowPrivacy(false)} />;
