@@ -117,6 +117,53 @@ const WeeklyActivityChart = ({ days }: { days: WeeklyActivityDay[] }) => {
   );
 };
 
+/* ---------- Daily goal ring — the "3/15 min today" payoff moment ---------- */
+const DailyGoalRing = ({ minutes, goal }: { minutes: number; goal: number }) => {
+  const size = 76;
+  const stroke = 7;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const pct = Math.min(1, goal > 0 ? minutes / goal : 0);
+  const met = minutes >= goal && goal > 0;
+
+  return (
+    <HStack spacing={3} bg="white" border="1px solid" borderColor={line} borderRadius="2xl" px={4} py={3}>
+      <Box position="relative" w={`${size}px`} h={`${size}px`} flexShrink={0}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={line} strokeWidth={stroke} />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke={met ? sage : rose}
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference * (1 - pct)}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            style={{ transition: 'stroke-dashoffset 0.4s ease' }}
+          />
+        </svg>
+        <Flex position="absolute" inset={0} align="center" justify="center" direction="column">
+          <Icon as={met ? FiCheckCircle : FiTarget} boxSize={4} color={met ? sage : rose} />
+        </Flex>
+      </Box>
+      <Box>
+        <Text fontSize="xs" color={inkSoft} fontWeight="600">
+          Today's goal
+        </Text>
+        <Text fontFamily={serif} fontWeight="700" fontSize="lg" color={ink} lineHeight="1.2">
+          {minutes}/{goal} min
+        </Text>
+        <Text fontSize="10px" color={met ? sage : inkSoft} fontWeight={met ? '700' : '400'}>
+          {met ? 'Goal reached today!' : `${Math.max(0, goal - minutes)} min to go`}
+        </Text>
+      </Box>
+    </HStack>
+  );
+};
+
 /* ---------- Card wrapper ---------- */
 const Panel = ({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) => (
   <Box bg="white" border="1px solid" borderColor={line} borderRadius="2xl" p={{ base: 5, md: 6 }}>
@@ -138,6 +185,7 @@ interface DashboardProps {
   retryable?: boolean;
   onRetry?: () => void;
   username?: string;
+  dailyGoalMinutes?: number | null;
   onOpenCourse: (courseId: string) => void;
   onBrowseCourses: () => void;
   onGoToSection: (id: string) => void;
@@ -149,13 +197,17 @@ const quickActions = [
   { id: 'chat', label: 'Ask the tutor', icon: FiMessageCircle, tile: rose },
 ];
 
-const Dashboard = ({ data, isLoading, error, retryable, onRetry, username, onOpenCourse, onBrowseCourses, onGoToSection }: DashboardProps) => {
+const Dashboard = ({ data, isLoading, error, retryable, onRetry, username, dailyGoalMinutes, onOpenCourse, onBrowseCourses, onGoToSection }: DashboardProps) => {
   const summary = data?.summary;
   const cl = data?.continueLearning;
   const hours = useMemo(() => {
     const mins = summary?.totalTimeMinutes ?? 0;
     return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
   }, [summary?.totalTimeMinutes]);
+  const todayMinutes = useMemo(() => {
+    const todayIso = new Date().toISOString().slice(0, 10);
+    return data?.weeklyActivity?.find((d) => d.date.slice(0, 10) === todayIso)?.minutes ?? 0;
+  }, [data?.weeklyActivity]);
 
   if (isLoading && !data) {
     return (
@@ -202,15 +254,18 @@ const Dashboard = ({ data, isLoading, error, retryable, onRetry, username, onOpe
       )}
 
       {/* Greeting */}
-      <Box>
-        <Text fontFamily={serif} fontWeight="600" fontSize={{ base: '2xl', md: '3xl' }} color={ink}>
-          Muraho, {username || 'learner'} 👋
-        </Text>
-        <Text color={inkSoft} fontSize="sm" mt={1}>
-          {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} —{' '}
-          {summary?.streakDays ? `you're on a ${summary.streakDays}-day streak. Keep it alive!` : 'a perfect day to start a streak.'}
-        </Text>
-      </Box>
+      <Flex justify="space-between" align="center" wrap="wrap" gap={4}>
+        <Box>
+          <Text fontFamily={serif} fontWeight="600" fontSize={{ base: '2xl', md: '3xl' }} color={ink}>
+            Muraho, {username || 'learner'} 👋
+          </Text>
+          <Text color={inkSoft} fontSize="sm" mt={1}>
+            {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} —{' '}
+            {summary?.streakDays ? `you're on a ${summary.streakDays}-day streak. Keep it alive!` : 'a perfect day to start a streak.'}
+          </Text>
+        </Box>
+        <DailyGoalRing minutes={todayMinutes} goal={dailyGoalMinutes || 15} />
+      </Flex>
 
       {/* Stats */}
       <SimpleGrid columns={{ base: 2, lg: 4 }} spacing={{ base: 3, md: 4 }}>

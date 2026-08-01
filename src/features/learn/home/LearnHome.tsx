@@ -102,6 +102,7 @@ const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
             retryable={retryable}
             onRetry={refetch}
             username={user?.firstName || user?.username}
+            dailyGoalMinutes={user?.dailyGoalMinutes}
             onOpenCourse={openCourse}
             onBrowseCourses={() => openCourse(null)}
             onGoToSection={setActiveSection}
