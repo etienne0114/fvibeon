@@ -12,6 +12,10 @@ import {
   Icon,
   IconButton,
   Input,
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuList,
   Modal,
   ModalBody,
   ModalCloseButton,
@@ -23,6 +27,11 @@ import {
   RadioGroup,
   Skeleton,
   Stack,
+  Tab,
+  TabList,
+  TabPanel,
+  TabPanels,
+  Tabs,
   Text,
   Textarea,
   useBreakpointValue,
@@ -43,6 +52,13 @@ import {
   FiCheck,
   FiX,
   FiArrowLeft,
+  FiSettings,
+  FiTrash2,
+  FiEdit2,
+  FiMoreVertical,
+  FiLogOut,
+  FiShield,
+  FiUserX,
 } from 'react-icons/fi';
 import {
   fetchSpaces,
@@ -51,10 +67,20 @@ import {
   joinSpace,
   joinViaInvite,
   createInvite,
+  updateSpace,
+  deleteSpace,
+  leaveSpace,
+  fetchMembers,
+  updateMemberRole,
+  removeMember,
+  transferOwnership,
   createChannel,
+  updateChannel,
+  deleteChannel,
   fetchMessages,
   postTextMessage,
   postMediaMessage,
+  deleteMessage,
   messageMediaUrl,
   requestToJoinDebate,
   fetchDebateRequests,
@@ -66,8 +92,10 @@ import {
   ChannelSummary,
   ChannelMessage,
   DebateRequest,
+  SpaceMember,
 } from '../../api/spaces';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
+import { useMe } from '../../hooks/useMe';
 import { ink, inkSoft, rose, roseDeep, card, line, serif, sage, sageDeep, sageTint, amber, amberDeep, amberTint } from '../../theme/brand';
 
 const blobToBase64 = (blob: Blob) =>
@@ -79,6 +107,46 @@ const blobToBase64 = (blob: Blob) =>
   });
 
 const MAX_UPLOAD_BYTES = 350 * 1024;
+
+/* ---------------- Confirm dialog (destructive actions) ---------------- */
+const ConfirmModal = ({
+  isOpen,
+  title,
+  body,
+  confirmLabel = 'Confirm',
+  isLoading,
+  onConfirm,
+  onClose,
+}: {
+  isOpen: boolean;
+  title: string;
+  body: string;
+  confirmLabel?: string;
+  isLoading?: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) => (
+  <Modal isOpen={isOpen} onClose={onClose} isCentered size="sm">
+    <ModalOverlay />
+    <ModalContent borderRadius="xl">
+      <ModalHeader fontFamily={serif}>{title}</ModalHeader>
+      <ModalCloseButton />
+      <ModalBody>
+        <Text fontSize="sm" color={inkSoft}>
+          {body}
+        </Text>
+      </ModalBody>
+      <ModalFooter>
+        <Button size="sm" variant="ghost" mr={2} onClick={onClose}>
+          Cancel
+        </Button>
+        <Button size="sm" bg={rose} color="white" _hover={{ bg: roseDeep }} isLoading={isLoading} onClick={onConfirm}>
+          {confirmLabel}
+        </Button>
+      </ModalFooter>
+    </ModalContent>
+  </Modal>
+);
 
 /* ---------------- Create Space modal ---------------- */
 const CreateSpaceModal = ({ isOpen, onClose, onCreated }: { isOpen: boolean; onClose: () => void; onCreated: (id: string) => void }) => {
@@ -266,15 +334,37 @@ const SpaceList = ({
 );
 
 /* ---------------- Message bubble ---------------- */
-const MessageBubble = ({ message }: { message: ChannelMessage }) => (
-  <Stack spacing={0.5} align="flex-start">
-    <HStack spacing={2}>
-      <Text fontSize="xs" fontWeight="700" color={ink}>
-        @{message.user.username}
-      </Text>
-      <Text fontSize="10px" color={inkSoft}>
-        {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-      </Text>
+const MessageBubble = ({
+  message,
+  canDelete,
+  onDelete,
+}: {
+  message: ChannelMessage;
+  canDelete: boolean;
+  onDelete: () => void;
+}) => (
+  <Stack spacing={0.5} align="flex-start" role="group" w="full">
+    <HStack spacing={2} w="full" justify="space-between">
+      <HStack spacing={2}>
+        <Text fontSize="xs" fontWeight="700" color={ink}>
+          @{message.user.username}
+        </Text>
+        <Text fontSize="10px" color={inkSoft}>
+          {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </Text>
+      </HStack>
+      {canDelete && (
+        <IconButton
+          aria-label="Delete message"
+          icon={<FiTrash2 />}
+          size="xs"
+          variant="ghost"
+          color={inkSoft}
+          opacity={0}
+          _groupHover={{ opacity: 1 }}
+          onClick={onDelete}
+        />
+      )}
     </HStack>
     {message.type === 'TEXT' && (
       <Box bg={card} borderRadius="lg" px={3} py={2} maxW="80%">
@@ -314,9 +404,11 @@ const ChannelThread = ({
   const [sending, setSending] = useState(false);
   const [debateStatus, setDebateStatus] = useState<string | null>(null);
   const [pendingRequests, setPendingRequests] = useState<DebateRequest[]>([]);
+  const [confirmDeleteMessageId, setConfirmDeleteMessageId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recorder = useAudioRecorder();
   const toast = useToast();
+  const { user: me } = useMe();
 
   const canPost = channel.type === 'TEXT' || isModerator || debateStatus === 'APPROVED';
 
@@ -473,9 +565,34 @@ const ChannelThread = ({
             No messages yet — say something!
           </Text>
         ) : (
-          messages.map((m) => <MessageBubble key={m.id} message={m} />)
+          messages.map((m) => (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              canDelete={m.user.id === me?.id || isModerator}
+              onDelete={() => setConfirmDeleteMessageId(m.id)}
+            />
+          ))
         )}
       </Stack>
+
+      <ConfirmModal
+        isOpen={Boolean(confirmDeleteMessageId)}
+        title="Delete this message?"
+        body="This can't be undone."
+        confirmLabel="Delete"
+        onConfirm={async () => {
+          if (!confirmDeleteMessageId) return;
+          try {
+            await deleteMessage(channel.id, confirmDeleteMessageId);
+            setConfirmDeleteMessageId(null);
+            await load();
+          } catch (err: any) {
+            toast({ title: err?.response?.data?.error || 'Could not delete message', status: 'error', duration: 3000, position: 'top' });
+          }
+        }}
+        onClose={() => setConfirmDeleteMessageId(null)}
+      />
 
       {channel.type === 'DEBATE' && !isModerator && debateStatus !== 'APPROVED' && (
         <Alert status={debateStatus === 'PENDING' ? 'info' : debateStatus === 'DECLINED' ? 'warning' : 'info'} borderRadius="lg" fontSize="sm">
@@ -528,6 +645,291 @@ const ChannelThread = ({
   );
 };
 
+/* ---------------- Space settings modal (General + Members, role-gated) ---------------- */
+const SpaceSettingsModal = ({
+  isOpen,
+  onClose,
+  space,
+  onUpdated,
+  onDeleted,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  space: SpaceDetail;
+  onUpdated: () => void;
+  onDeleted: () => void;
+}) => {
+  const { user: me } = useMe();
+  const isOwner = space.myRole === 'OWNER';
+  const [name, setName] = useState(space.name);
+  const [description, setDescription] = useState(space.description || '');
+  const [visibility, setVisibility] = useState<'PUBLIC' | 'PRIVATE'>(space.visibility);
+  const [saving, setSaving] = useState(false);
+  const [members, setMembers] = useState<SpaceMember[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [confirmDeleteSpace, setConfirmDeleteSpace] = useState(false);
+  const [confirmRemoveMember, setConfirmRemoveMember] = useState<SpaceMember | null>(null);
+  const [confirmTransfer, setConfirmTransfer] = useState<SpaceMember | null>(null);
+  const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
+  const toast = useToast();
+
+  const loadMembers = useCallback(async () => {
+    try {
+      setLoadingMembers(true);
+      setMembers(await fetchMembers(space.id));
+    } catch {
+      // leave list empty — the tab still shows a friendly empty state
+    } finally {
+      setLoadingMembers(false);
+    }
+  }, [space.id]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setName(space.name);
+    setDescription(space.description || '');
+    setVisibility(space.visibility);
+    loadMembers();
+  }, [isOpen, space, loadMembers]);
+
+  const saveGeneral = async () => {
+    try {
+      setSaving(true);
+      await updateSpace(space.id, { name, description, visibility });
+      toast({ title: 'Space updated', status: 'success', duration: 2000, position: 'top' });
+      onUpdated();
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not update space', status: 'error', duration: 3000, position: 'top' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteSpace = async () => {
+    try {
+      setSaving(true);
+      await deleteSpace(space.id);
+      setConfirmDeleteSpace(false);
+      onClose();
+      onDeleted();
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not delete space', status: 'error', duration: 3000, position: 'top' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const promote = async (member: SpaceMember) => {
+    try {
+      setBusyMemberId(member.user.id);
+      await updateMemberRole(space.id, member.user.id, 'MODERATOR');
+      await loadMembers();
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not promote', status: 'error', duration: 3000, position: 'top' });
+    } finally {
+      setBusyMemberId(null);
+    }
+  };
+
+  const demote = async (member: SpaceMember) => {
+    try {
+      setBusyMemberId(member.user.id);
+      await updateMemberRole(space.id, member.user.id, 'MEMBER');
+      await loadMembers();
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not demote', status: 'error', duration: 3000, position: 'top' });
+    } finally {
+      setBusyMemberId(null);
+    }
+  };
+
+  const handleRemoveMember = async () => {
+    if (!confirmRemoveMember) return;
+    try {
+      setBusyMemberId(confirmRemoveMember.user.id);
+      await removeMember(space.id, confirmRemoveMember.user.id);
+      setConfirmRemoveMember(null);
+      await loadMembers();
+      onUpdated();
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not remove member', status: 'error', duration: 3000, position: 'top' });
+    } finally {
+      setBusyMemberId(null);
+    }
+  };
+
+  const handleTransfer = async () => {
+    if (!confirmTransfer) return;
+    try {
+      setBusyMemberId(confirmTransfer.user.id);
+      await transferOwnership(space.id, confirmTransfer.user.id);
+      setConfirmTransfer(null);
+      toast({ title: `${confirmTransfer.user.username} now owns this space`, status: 'success', duration: 2500, position: 'top' });
+      onUpdated();
+      onClose();
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not transfer ownership', status: 'error', duration: 3000, position: 'top' });
+    } finally {
+      setBusyMemberId(null);
+    }
+  };
+
+  return (
+    <>
+      <Modal isOpen={isOpen} onClose={onClose} isCentered size="lg">
+        <ModalOverlay />
+        <ModalContent borderRadius="xl">
+          <ModalHeader fontFamily={serif}>Space settings</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            <Tabs colorScheme="blackAlpha" size="sm">
+              <TabList>
+                <Tab>General</Tab>
+                <Tab>Members ({members.length || space._count.memberships})</Tab>
+              </TabList>
+              <TabPanels>
+                <TabPanel px={0}>
+                  <Stack spacing={4}>
+                    <FormControl>
+                      <FormLabel fontSize="sm" color={inkSoft}>
+                        Name
+                      </FormLabel>
+                      <Input value={name} onChange={(e) => setName(e.target.value)} borderColor={line} />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel fontSize="sm" color={inkSoft}>
+                        Description
+                      </FormLabel>
+                      <Textarea value={description} onChange={(e) => setDescription(e.target.value)} borderColor={line} rows={2} />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel fontSize="sm" color={inkSoft}>
+                        Visibility
+                      </FormLabel>
+                      <RadioGroup value={visibility} onChange={(v) => setVisibility(v as 'PUBLIC' | 'PRIVATE')}>
+                        <Stack spacing={2}>
+                          <Radio value="PUBLIC">
+                            <Text fontSize="sm">Public — listed, anyone can join</Text>
+                          </Radio>
+                          <Radio value="PRIVATE">
+                            <Text fontSize="sm">Private — invite link only</Text>
+                          </Radio>
+                        </Stack>
+                      </RadioGroup>
+                    </FormControl>
+                    <HStack justify="space-between" pt={2}>
+                      <Button size="sm" bg={ink} color="white" _hover={{ bg: '#463039' }} borderRadius="full" isLoading={saving} onClick={saveGeneral}>
+                        Save changes
+                      </Button>
+                      {isOwner && (
+                        <Button size="sm" variant="outline" borderColor={rose} color={rose} leftIcon={<FiTrash2 />} onClick={() => setConfirmDeleteSpace(true)}>
+                          Delete space
+                        </Button>
+                      )}
+                    </HStack>
+                  </Stack>
+                </TabPanel>
+                <TabPanel px={0}>
+                  {loadingMembers ? (
+                    <Skeleton h="120px" borderRadius="lg" />
+                  ) : (
+                    <Stack spacing={2} maxH="360px" overflowY="auto">
+                      {members.map((m) => {
+                        const isSelf = m.user.id === me?.id;
+                        const canManage = isOwner && !isSelf && m.role !== 'OWNER';
+                        return (
+                          <HStack key={m.id} justify="space-between" bg={card} borderRadius="lg" px={3} py={2}>
+                            <HStack spacing={2}>
+                              <Text fontSize="sm" fontWeight="600" color={ink}>
+                                @{m.user.username}
+                              </Text>
+                              <Badge
+                                fontSize="9px"
+                                borderRadius="full"
+                                px={2}
+                                bg={m.role === 'OWNER' ? amberTint : m.role === 'MODERATOR' ? sageTint : 'gray.100'}
+                                color={m.role === 'OWNER' ? amberDeep : m.role === 'MODERATOR' ? sageDeep : inkSoft}
+                              >
+                                {m.role}
+                              </Badge>
+                              {isSelf && (
+                                <Text fontSize="10px" color={inkSoft}>
+                                  (you)
+                                </Text>
+                              )}
+                            </HStack>
+                            {canManage && (
+                              <Menu>
+                                <MenuButton
+                                  as={IconButton}
+                                  aria-label="Manage member"
+                                  icon={<FiMoreVertical />}
+                                  size="xs"
+                                  variant="ghost"
+                                  isLoading={busyMemberId === m.user.id}
+                                />
+                                <MenuList fontSize="sm">
+                                  {m.role === 'MEMBER' ? (
+                                    <MenuItem icon={<FiShield />} onClick={() => promote(m)}>
+                                      Promote to moderator
+                                    </MenuItem>
+                                  ) : (
+                                    <MenuItem icon={<FiShield />} onClick={() => demote(m)}>
+                                      Demote to member
+                                    </MenuItem>
+                                  )}
+                                  <MenuItem icon={<FiUserPlus />} onClick={() => setConfirmTransfer(m)}>
+                                    Make owner
+                                  </MenuItem>
+                                  <MenuItem icon={<FiUserX />} color={rose} onClick={() => setConfirmRemoveMember(m)}>
+                                    Remove from space
+                                  </MenuItem>
+                                </MenuList>
+                              </Menu>
+                            )}
+                          </HStack>
+                        );
+                      })}
+                    </Stack>
+                  )}
+                </TabPanel>
+              </TabPanels>
+            </Tabs>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
+
+      <ConfirmModal
+        isOpen={confirmDeleteSpace}
+        title="Delete this space?"
+        body="This permanently deletes the space, its channels, and all messages. This can't be undone."
+        confirmLabel="Delete space"
+        isLoading={saving}
+        onConfirm={handleDeleteSpace}
+        onClose={() => setConfirmDeleteSpace(false)}
+      />
+      <ConfirmModal
+        isOpen={Boolean(confirmRemoveMember)}
+        title="Remove this member?"
+        body={`@${confirmRemoveMember?.user.username} will lose access to this space and its channels.`}
+        confirmLabel="Remove"
+        isLoading={Boolean(busyMemberId)}
+        onConfirm={handleRemoveMember}
+        onClose={() => setConfirmRemoveMember(null)}
+      />
+      <ConfirmModal
+        isOpen={Boolean(confirmTransfer)}
+        title="Transfer ownership?"
+        body={`@${confirmTransfer?.user.username} becomes the owner of this space. You'll become a moderator instead.`}
+        confirmLabel="Transfer"
+        isLoading={Boolean(busyMemberId)}
+        onConfirm={handleTransfer}
+        onClose={() => setConfirmTransfer(null)}
+      />
+    </>
+  );
+};
+
 /* ---------------- Space detail (right column) ---------------- */
 const SpaceDetailPanel = ({
   spaceId,
@@ -546,6 +948,12 @@ const SpaceDetailPanel = ({
   const [newChannelType, setNewChannelType] = useState<'TEXT' | 'DEBATE'>('TEXT');
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
+  const [editChannelName, setEditChannelName] = useState('');
+  const [confirmDeleteChannel, setConfirmDeleteChannel] = useState<ChannelSummary | null>(null);
   const toast = useToast();
   // Below lg, channels and the thread are two more drill-down levels
   // (space -> channel -> thread) instead of a side-by-side split — a
@@ -630,6 +1038,48 @@ const SpaceDetailPanel = ({
     }
   };
 
+  const handleLeave = async () => {
+    try {
+      setLeaving(true);
+      await leaveSpace(spaceId);
+      setConfirmLeave(false);
+      onSpaceListRefresh();
+      onBack();
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not leave space', status: 'error', duration: 3000, position: 'top' });
+    } finally {
+      setLeaving(false);
+    }
+  };
+
+  const startEditChannel = (c: ChannelSummary) => {
+    setEditingChannelId(c.id);
+    setEditChannelName(c.name);
+  };
+
+  const saveChannelEdit = async () => {
+    if (!editingChannelId) return;
+    try {
+      await updateChannel(editingChannelId, { name: editChannelName });
+      setEditingChannelId(null);
+      await load();
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not rename channel', status: 'error', duration: 3000, position: 'top' });
+    }
+  };
+
+  const handleDeleteChannel = async () => {
+    if (!confirmDeleteChannel) return;
+    try {
+      await deleteChannel(confirmDeleteChannel.id);
+      if (selectedChannelId === confirmDeleteChannel.id) setSelectedChannelId(null);
+      setConfirmDeleteChannel(null);
+      await load();
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not delete channel', status: 'error', duration: 3000, position: 'top' });
+    }
+  };
+
   // On mobile/tablet, once a channel is open it takes the full screen —
   // the space header and channel list step out of the way, matching the
   // channel thread's own back button (channel -> channel list), separate
@@ -668,7 +1118,26 @@ const SpaceDetailPanel = ({
                 <Button size="sm" variant="outline" borderColor={line} leftIcon={<FiPlus />} onClick={() => setShowCreateChannel((v) => !v)}>
                   Channel
                 </Button>
+                <IconButton
+                  aria-label="Space settings"
+                  icon={<FiSettings />}
+                  size="sm"
+                  variant="outline"
+                  borderColor={line}
+                  onClick={() => setShowSettings(true)}
+                />
               </>
+            )}
+            {isMember && space.myRole !== 'OWNER' && (
+              <IconButton
+                aria-label="Leave space"
+                icon={<FiLogOut />}
+                size="sm"
+                variant="outline"
+                borderColor={line}
+                color={inkSoft}
+                onClick={() => setConfirmLeave(true)}
+              />
             )}
           </HStack>
         </HStack>
@@ -722,24 +1191,44 @@ const SpaceDetailPanel = ({
             borderColor={line}
             display={showingMobileThread ? 'none' : 'flex'}
           >
-            {space.channels.map((c) => (
-              <HStack
-                key={c.id}
-                as="button"
-                onClick={() => setSelectedChannelId(c.id)}
-                spacing={2}
-                px={3}
-                py={2}
-                borderRadius="md"
-                bg={c.id === selectedChannelId ? card : 'transparent'}
-                textAlign="left"
-              >
-                <Icon as={c.type === 'DEBATE' ? FiMessageSquare : FiHash} boxSize={3.5} color={inkSoft} />
-                <Text fontSize="sm" color={ink}>
-                  {c.name}
-                </Text>
-              </HStack>
-            ))}
+            {space.channels.map((c) =>
+              editingChannelId === c.id ? (
+                <HStack key={c.id} px={2} py={1}>
+                  <Input
+                    size="xs"
+                    value={editChannelName}
+                    onChange={(e) => setEditChannelName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && saveChannelEdit()}
+                    borderColor={line}
+                    autoFocus
+                  />
+                  <IconButton aria-label="Save" icon={<FiCheck />} size="xs" onClick={saveChannelEdit} />
+                  <IconButton aria-label="Cancel" icon={<FiX />} size="xs" variant="ghost" onClick={() => setEditingChannelId(null)} />
+                </HStack>
+              ) : (
+                <HStack key={c.id} justify="space-between" borderRadius="md" bg={c.id === selectedChannelId ? card : 'transparent'} pr={1}>
+                  <HStack as="button" onClick={() => setSelectedChannelId(c.id)} spacing={2} px={3} py={2} flex={1} textAlign="left" minW={0}>
+                    <Icon as={c.type === 'DEBATE' ? FiMessageSquare : FiHash} boxSize={3.5} color={inkSoft} flexShrink={0} />
+                    <Text fontSize="sm" color={ink} noOfLines={1}>
+                      {c.name}
+                    </Text>
+                  </HStack>
+                  {isModerator && (
+                    <Menu>
+                      <MenuButton as={IconButton} aria-label="Channel settings" icon={<FiMoreVertical />} size="xs" variant="ghost" />
+                      <MenuList fontSize="sm">
+                        <MenuItem icon={<FiEdit2 />} onClick={() => startEditChannel(c)}>
+                          Rename
+                        </MenuItem>
+                        <MenuItem icon={<FiTrash2 />} color={rose} onClick={() => setConfirmDeleteChannel(c)}>
+                          Delete channel
+                        </MenuItem>
+                      </MenuList>
+                    </Menu>
+                  )}
+                </HStack>
+              ),
+            )}
           </Stack>
           <Box flex={1} pl={{ base: 0, lg: 5 }} display={!isDesktop && !selectedChannel ? 'none' : 'block'}>
             {selectedChannel && (
@@ -753,6 +1242,41 @@ const SpaceDetailPanel = ({
           </Box>
         </Flex>
       )}
+
+      {showSettings && (
+        <SpaceSettingsModal
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+          space={space}
+          onUpdated={() => {
+            onSpaceListRefresh();
+            load();
+          }}
+          onDeleted={() => {
+            onSpaceListRefresh();
+            onBack();
+          }}
+        />
+      )}
+
+      <ConfirmModal
+        isOpen={confirmLeave}
+        title="Leave this space?"
+        body="You'll lose access to its channels unless you rejoin (public) or get invited again (private)."
+        confirmLabel="Leave"
+        isLoading={leaving}
+        onConfirm={handleLeave}
+        onClose={() => setConfirmLeave(false)}
+      />
+
+      <ConfirmModal
+        isOpen={Boolean(confirmDeleteChannel)}
+        title="Delete this channel?"
+        body={`"#${confirmDeleteChannel?.name}" and all its messages will be permanently deleted.`}
+        confirmLabel="Delete channel"
+        onConfirm={handleDeleteChannel}
+        onClose={() => setConfirmDeleteChannel(null)}
+      />
     </Stack>
   );
 };

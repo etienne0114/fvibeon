@@ -48,6 +48,13 @@ export interface DebateRequest {
   user: { id: string; username: string };
 }
 
+export interface SpaceMember {
+  id: string;
+  role: 'OWNER' | 'MODERATOR' | 'MEMBER';
+  joinedAt: string;
+  user: { id: string; username: string };
+}
+
 function unwrap(response: any) {
   return response.data.data;
 }
@@ -76,8 +83,44 @@ export async function createInvite(spaceId: string): Promise<{ code: string }> {
   return unwrap(await client.post(`/spaces/${spaceId}/invites`));
 }
 
+export async function updateSpace(spaceId: string, updates: { name?: string; description?: string; visibility?: 'PUBLIC' | 'PRIVATE' }) {
+  return unwrap(await client.patch(`/spaces/${spaceId}`, updates));
+}
+
+export async function deleteSpace(spaceId: string) {
+  return unwrap(await client.delete(`/spaces/${spaceId}`));
+}
+
+export async function leaveSpace(spaceId: string) {
+  return unwrap(await client.post(`/spaces/${spaceId}/leave`));
+}
+
+export async function fetchMembers(spaceId: string): Promise<SpaceMember[]> {
+  return unwrap(await client.get(`/spaces/${spaceId}/members`));
+}
+
+export async function updateMemberRole(spaceId: string, userId: string, role: 'MODERATOR' | 'MEMBER') {
+  return unwrap(await client.patch(`/spaces/${spaceId}/members/${userId}/role`, { role }));
+}
+
+export async function removeMember(spaceId: string, userId: string) {
+  return unwrap(await client.delete(`/spaces/${spaceId}/members/${userId}`));
+}
+
+export async function transferOwnership(spaceId: string, userId: string) {
+  return unwrap(await client.post(`/spaces/${spaceId}/transfer/${userId}`));
+}
+
 export async function createChannel(spaceId: string, name: string, description: string, type: 'TEXT' | 'DEBATE') {
   return unwrap(await client.post(`/spaces/${spaceId}/channels`, { name, description, type }));
+}
+
+export async function updateChannel(channelId: string, updates: { name?: string; description?: string }) {
+  return unwrap(await client.patch(`/spaces/channels/${channelId}`, updates));
+}
+
+export async function deleteChannel(channelId: string) {
+  return unwrap(await client.delete(`/spaces/channels/${channelId}`));
 }
 
 export async function fetchMessages(channelId: string): Promise<{ channel: ChannelSummary; messages: ChannelMessage[] }> {
@@ -90,6 +133,10 @@ export async function postTextMessage(channelId: string, text: string) {
 
 export async function postMediaMessage(channelId: string, type: 'VOICE' | 'IMAGE', media: string, mimeType: string) {
   return unwrap(await client.post(`/spaces/channels/${channelId}/messages`, { type, media, mimeType }));
+}
+
+export async function deleteMessage(channelId: string, messageId: string) {
+  return unwrap(await client.delete(`/spaces/channels/${channelId}/messages/${messageId}`));
 }
 
 export function messageMediaUrl(messageId: string) {
