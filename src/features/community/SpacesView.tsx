@@ -25,6 +25,7 @@ import {
   Stack,
   Text,
   Textarea,
+  useBreakpointValue,
   useToast,
 } from '@chakra-ui/react';
 import {
@@ -461,7 +462,7 @@ const ChannelThread = ({
         </Box>
       )}
 
-      <Stack spacing={3} flex={1} overflowY="auto" minH="200px" maxH={{ base: '340px', lg: '48vh' }} bg="white" border="1px solid" borderColor={line} borderRadius="xl" p={4}>
+      <Stack spacing={3} flex={1} overflowY="auto" minH="200px" maxH={{ base: 'calc(100dvh - 260px)', lg: '58vh' }} bg="white" border="1px solid" borderColor={line} borderRadius="xl" p={4}>
         {loading ? (
           <>
             <Skeleton h="40px" borderRadius="md" />
@@ -546,16 +547,21 @@ const SpaceDetailPanel = ({
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   const toast = useToast();
+  // Below lg, channels and the thread are two more drill-down levels
+  // (space -> channel -> thread) instead of a side-by-side split — a
+  // fixed channel list + thread wedged into a narrow column read as
+  // cramped and unpolished on phones/tablets.
+  const isDesktop = useBreakpointValue({ base: false, lg: true }) ?? false;
 
   const load = useCallback(async () => {
     setLoading(true);
     const data = await fetchSpace(spaceId).catch(() => null);
     setSpace(data);
-    if (data && 'channels' in data && data.channels.length > 0) {
+    if (data && 'channels' in data && data.channels.length > 0 && isDesktop) {
       setSelectedChannelId((prev) => prev || data.channels[0].id);
     }
     setLoading(false);
-  }, [spaceId]);
+  }, [spaceId, isDesktop]);
 
   useEffect(() => {
     load();
@@ -616,81 +622,98 @@ const SpaceDetailPanel = ({
     }
   };
 
+  // On mobile/tablet, once a channel is open it takes the full screen —
+  // the space header and channel list step out of the way, matching the
+  // channel thread's own back button (channel -> channel list), separate
+  // from the space list's back button (space list -> spaces).
+  const showingMobileThread = !isDesktop && Boolean(selectedChannel);
+
   return (
     <Stack spacing={4}>
-      <HStack justify="space-between" wrap="wrap">
-        <HStack>
-          <IconButton aria-label="Back to spaces" icon={<FiArrowLeft />} size="sm" variant="ghost" display={{ base: 'flex', lg: 'none' }} onClick={onBack} />
-          <Box>
-            <HStack spacing={2}>
-              <Icon as={space.visibility === 'PRIVATE' ? FiLock : FiGlobe} color={inkSoft} boxSize={3.5} />
-              <Text fontFamily={serif} fontWeight="600" fontSize="lg" color={ink}>
-                {space.name}
+      <Box display={showingMobileThread ? { base: 'none', lg: 'block' } : 'block'}>
+        <HStack justify="space-between" wrap="wrap">
+          <HStack>
+            <IconButton aria-label="Back to spaces" icon={<FiArrowLeft />} size="sm" variant="ghost" display={{ base: 'flex', lg: 'none' }} onClick={onBack} />
+            <Box>
+              <HStack spacing={2}>
+                <Icon as={space.visibility === 'PRIVATE' ? FiLock : FiGlobe} color={inkSoft} boxSize={3.5} />
+                <Text fontFamily={serif} fontWeight="600" fontSize="lg" color={ink}>
+                  {space.name}
+                </Text>
+              </HStack>
+              <Text fontSize="xs" color={inkSoft}>
+                {space._count.memberships} members
               </Text>
-            </HStack>
-            <Text fontSize="xs" color={inkSoft}>
-              {space._count.memberships} members
-            </Text>
-          </Box>
+            </Box>
+          </HStack>
+          <HStack>
+            {!isMember && space.visibility === 'PUBLIC' && (
+              <Button size="sm" bg={ink} color="white" _hover={{ bg: '#463039' }} borderRadius="full" isLoading={joining} onClick={handleJoin}>
+                Join
+              </Button>
+            )}
+            {isModerator && (
+              <>
+                <Button size="sm" variant="outline" borderColor={line} leftIcon={<FiUserPlus />} onClick={handleInvite}>
+                  Invite
+                </Button>
+                <Button size="sm" variant="outline" borderColor={line} leftIcon={<FiPlus />} onClick={() => setShowCreateChannel((v) => !v)}>
+                  Channel
+                </Button>
+              </>
+            )}
+          </HStack>
         </HStack>
-        <HStack>
-          {!isMember && space.visibility === 'PUBLIC' && (
-            <Button size="sm" bg={ink} color="white" _hover={{ bg: '#463039' }} borderRadius="full" isLoading={joining} onClick={handleJoin}>
-              Join
+
+        {space.description && (
+          <Text fontSize="sm" color={inkSoft} mt={2}>
+            {space.description}
+          </Text>
+        )}
+
+        {inviteCode && (
+          <Alert status="success" borderRadius="lg" fontSize="sm" mt={3}>
+            <AlertIcon />
+            Invite code: <Text as="span" fontWeight="700" ml={1}>{inviteCode}</Text>
+          </Alert>
+        )}
+
+        {showCreateChannel && (
+          <HStack bg={card} borderRadius="lg" p={3} mt={3}>
+            <Input size="sm" placeholder="channel-name" value={newChannelName} onChange={(e) => setNewChannelName(e.target.value)} borderColor={line} bg="white" />
+            <RadioGroup value={newChannelType} onChange={(v) => setNewChannelType(v as 'TEXT' | 'DEBATE')}>
+              <HStack fontSize="xs">
+                <Radio size="sm" value="TEXT">
+                  Text
+                </Radio>
+                <Radio size="sm" value="DEBATE">
+                  Debate
+                </Radio>
+              </HStack>
+            </RadioGroup>
+            <Button size="sm" bg={ink} color="white" isDisabled={!newChannelName.trim()} onClick={handleCreateChannel}>
+              Add
             </Button>
-          )}
-          {isModerator && (
-            <>
-              <Button size="sm" variant="outline" borderColor={line} leftIcon={<FiUserPlus />} onClick={handleInvite}>
-                Invite
-              </Button>
-              <Button size="sm" variant="outline" borderColor={line} leftIcon={<FiPlus />} onClick={() => setShowCreateChannel((v) => !v)}>
-                Channel
-              </Button>
-            </>
-          )}
-        </HStack>
-      </HStack>
-
-      {space.description && (
-        <Text fontSize="sm" color={inkSoft}>
-          {space.description}
-        </Text>
-      )}
-
-      {inviteCode && (
-        <Alert status="success" borderRadius="lg" fontSize="sm">
-          <AlertIcon />
-          Invite code: <Text as="span" fontWeight="700" ml={1}>{inviteCode}</Text>
-        </Alert>
-      )}
-
-      {showCreateChannel && (
-        <HStack bg={card} borderRadius="lg" p={3}>
-          <Input size="sm" placeholder="channel-name" value={newChannelName} onChange={(e) => setNewChannelName(e.target.value)} borderColor={line} bg="white" />
-          <RadioGroup value={newChannelType} onChange={(v) => setNewChannelType(v as 'TEXT' | 'DEBATE')}>
-            <HStack fontSize="xs">
-              <Radio size="sm" value="TEXT">
-                Text
-              </Radio>
-              <Radio size="sm" value="DEBATE">
-                Debate
-              </Radio>
-            </HStack>
-          </RadioGroup>
-          <Button size="sm" bg={ink} color="white" isDisabled={!newChannelName.trim()} onClick={handleCreateChannel}>
-            Add
-          </Button>
-        </HStack>
-      )}
+          </HStack>
+        )}
+      </Box>
 
       {!isMember ? (
         <Text fontSize="sm" color={inkSoft} textAlign="center" py={6}>
           Join this space to see its channels.
         </Text>
       ) : (
-        <Flex gap={4} direction={{ base: 'column', md: 'row' }}>
-          <Stack spacing={1} minW={{ md: '160px' }}>
+        <Flex gap={0} direction={{ base: 'column', lg: 'row' }} align="stretch">
+          <Stack
+            spacing={0.5}
+            w={{ base: 'full', lg: '200px' }}
+            flexShrink={0}
+            pr={{ base: 0, lg: 4 }}
+            pb={{ base: 3, lg: 0 }}
+            borderRight={{ base: 'none', lg: '1px solid' }}
+            borderColor={line}
+            display={showingMobileThread ? 'none' : 'flex'}
+          >
             {space.channels.map((c) => (
               <HStack
                 key={c.id}
@@ -698,7 +721,7 @@ const SpaceDetailPanel = ({
                 onClick={() => setSelectedChannelId(c.id)}
                 spacing={2}
                 px={3}
-                py={1.5}
+                py={2}
                 borderRadius="md"
                 bg={c.id === selectedChannelId ? card : 'transparent'}
                 textAlign="left"
@@ -710,8 +733,15 @@ const SpaceDetailPanel = ({
               </HStack>
             ))}
           </Stack>
-          <Box flex={1}>
-            {selectedChannel && <ChannelThread spaceId={spaceId} channel={selectedChannel} isModerator={isModerator} />}
+          <Box flex={1} pl={{ base: 0, lg: 5 }} display={!isDesktop && !selectedChannel ? 'none' : 'block'}>
+            {selectedChannel && (
+              <ChannelThread
+                spaceId={spaceId}
+                channel={selectedChannel}
+                isModerator={isModerator}
+                onBack={!isDesktop ? () => setSelectedChannelId(null) : undefined}
+              />
+            )}
           </Box>
         </Flex>
       )}
@@ -740,7 +770,7 @@ const SpacesView = () => {
   return (
     <Box>
       <Flex gap={5} direction={{ base: 'column', lg: 'row' }}>
-        <Box w={{ base: 'full', lg: '300px' }} flexShrink={0} display={{ base: selectedSpaceId ? 'none' : 'block', lg: 'block' }}>
+        <Box w={{ base: 'full', lg: '320px' }} flexShrink={0} display={{ base: selectedSpaceId ? 'none' : 'block', lg: 'block' }}>
           {loading ? <Skeleton h="200px" borderRadius="xl" /> : (
             <SpaceList
               spaces={spaces}

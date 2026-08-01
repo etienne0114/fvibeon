@@ -54,6 +54,9 @@ interface HomeShellProps {
   onLogout?: () => void;
   onOpenProfile?: () => void;
   children: React.ReactNode;
+  /** Overrides the default 1200px content cap — Community's chat-like
+   * layout wants more room on large screens than the card-grid sections. */
+  contentMaxW?: string;
 }
 
 const NavItem = ({
@@ -89,7 +92,7 @@ const NavItem = ({
   </HStack>
 );
 
-const HomeShell = ({ activeSection, onSectionChange, username, streakDays = 0, onLogout, onOpenProfile, children }: HomeShellProps) => {
+const HomeShell = ({ activeSection, onSectionChange, username, streakDays = 0, onLogout, onOpenProfile, children, contentMaxW }: HomeShellProps) => {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const activeTitle = HOME_SECTIONS.find((s) => s.id === activeSection)?.title ?? 'Dashboard';
 
@@ -196,7 +199,7 @@ const HomeShell = ({ activeSection, onSectionChange, username, streakDays = 0, o
         </Flex>
 
         {/* Content */}
-        <Box as="main" flex={1} px={{ base: 4, md: 8 }} py={{ base: 5, md: 8 }} maxW="1200px" w="full" mx="auto">
+        <Box as="main" flex={1} px={{ base: 4, md: 8 }} py={{ base: 5, md: 8 }} maxW={contentMaxW || '1200px'} w="full" mx="auto">
           {children}
         </Box>
       </Flex>

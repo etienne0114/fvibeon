@@ -126,6 +126,7 @@ const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
     <>
       <HomeShell
         activeSection={activeSection}
+        contentMaxW={activeSection === 'community' ? '1600px' : '1200px'}
         onSectionChange={(id) => {
           setActiveSection(id);
           if (id !== 'courses') setOpenCourseId(null);
