@@ -16,7 +16,7 @@ const ReadingView = lazy(() => import('../../home/reading/ReadingView'));
 const ListeningView = lazy(() => import('../../home/listening/ListeningView'));
 const CoursesView = lazy(() => import('../../home/CoursesView'));
 const LearningPathsView = lazy(() => import('../../home/paths/LearningPathsView'));
-const CommunityView = lazy(() => import('../../home/community/CommunityView'));
+const CommunityView = lazy(() => import('../../community/CommunityView'));
 
 const PanelFallback = () => (
   <Stack spacing={4}>

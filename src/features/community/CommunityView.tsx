@@ -25,8 +25,8 @@ import {
   SentenceToCorrect,
   MySubmission,
   CommunityStats,
-} from '../../../api/community';
-import { ink, inkSoft, roseDeep, card, line, serif, sage, sageDeep, sageTint, roseTint } from '../../../theme/brand';
+} from '../../api/community';
+import { ink, inkSoft, roseDeep, card, line, serif, sage, sageDeep, sageTint, roseTint } from '../../theme/brand';
 
 const LANGS = [
   { id: 'en', label: 'English' },
