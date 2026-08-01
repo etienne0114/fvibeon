@@ -557,16 +557,24 @@ const SpaceDetailPanel = ({
     setLoading(true);
     const data = await fetchSpace(spaceId).catch(() => null);
     setSpace(data);
-    if (data && 'channels' in data && data.channels.length > 0 && isDesktop) {
-      setSelectedChannelId((prev) => prev || data.channels[0].id);
-    }
     setLoading(false);
-  }, [spaceId, isDesktop]);
+  }, [spaceId]);
 
   useEffect(() => {
     load();
     setSelectedChannelId(null);
   }, [spaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Separate from the load above: `isDesktop` resolves asynchronously
+  // (Chakra's media-query listener attaches after mount), so auto-selecting
+  // the first channel has to react to it independently — otherwise a
+  // desktop-width visit that loads before `isDesktop` flips true never
+  // gets a channel selected at all.
+  useEffect(() => {
+    if (space && 'channels' in space && space.channels.length > 0 && isDesktop) {
+      setSelectedChannelId((prev) => prev || space.channels[0].id);
+    }
+  }, [space, isDesktop]);
 
   if (loading) return <Skeleton h="300px" borderRadius="xl" />;
   if (!space) return <Text color={inkSoft}>Space not found.</Text>;
