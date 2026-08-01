@@ -15,7 +15,8 @@ import {
   Textarea,
   useToast,
 } from '@chakra-ui/react';
-import { FiUsers, FiEdit3, FiCheckCircle, FiClock, FiSend } from 'react-icons/fi';
+import { FiUsers, FiEdit3, FiCheckCircle, FiClock, FiSend, FiHash } from 'react-icons/fi';
+import SpacesView from './SpacesView';
 import {
   submitSentence,
   fetchSentenceToCorrect,
@@ -35,6 +36,7 @@ const LANGS = [
 ];
 
 const TABS = [
+  { id: 'spaces', label: 'Spaces', icon: FiHash },
   { id: 'correct', label: 'Correct a sentence', icon: FiEdit3 },
   { id: 'mine', label: 'My sentences', icon: FiUsers },
 ] as const;
@@ -331,7 +333,7 @@ const MineTab = ({ refreshKey }: { refreshKey: number }) => {
 
 /* ---------------- Community view ---------------- */
 const CommunityView = () => {
-  const [tab, setTab] = useState<(typeof TABS)[number]['id']>('correct');
+  const [tab, setTab] = useState<(typeof TABS)[number]['id']>('spaces');
   const [stats, setStats] = useState<CommunityStats | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -350,11 +352,11 @@ const CommunityView = () => {
           Community
         </Text>
         <Text color={inkSoft} fontSize="sm" mt={1}>
-          Submit one sentence a day, correct one from another learner — real feedback, no marketplace.
+          Spaces to join and discuss, plus a daily sentence swap for real feedback — no marketplace, no open feed.
         </Text>
       </Box>
 
-      {stats && (
+      {tab !== 'spaces' && stats && (
         <SimpleGrid columns={3} spacing={3}>
           <StatPill label="Submitted" value={stats.submitted} />
           <StatPill label="Corrected by you" value={stats.corrected} />
@@ -391,6 +393,7 @@ const CommunityView = () => {
         })}
       </Flex>
 
+      {tab === 'spaces' && <SpacesView />}
       {tab === 'correct' && <CorrectTab onCorrected={() => setRefreshKey((k) => k + 1)} />}
       {tab === 'mine' && <MineTab refreshKey={refreshKey} />}
     </Stack>
