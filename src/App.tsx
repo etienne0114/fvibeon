@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import AuthPage, { AuthMode } from './features/auth/AuthPage';
 import LandingPage from './features/landing/LandingPage';
 import LearnHome from './features/learn/home/LearnHome';
@@ -20,6 +20,16 @@ const App = () => {
   );
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [verifyCode, setVerifyCode] = useState(getVerifyCode);
+
+  // A same-tab navigation between two #verify-certificate links (or clicking
+  // "Back" then a new link) is a same-document hash change, not a reload —
+  // without this listener the state above would never update past the
+  // first code it was mounted with.
+  useEffect(() => {
+    const onHashChange = () => setVerifyCode(getVerifyCode());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
   const {
     token,
     authenticate,
