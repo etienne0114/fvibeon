@@ -32,7 +32,7 @@ import {
   useToast,
 } from '@chakra-ui/react';
 import { CheckIcon, CloseIcon } from '@chakra-ui/icons';
-import { FiVolume2, FiSearch, FiX, FiChevronLeft, FiChevronRight, FiGlobe, FiMic, FiCheckCircle, FiXCircle, FiClock } from 'react-icons/fi';
+import { FiVolume2, FiSearch, FiX, FiChevronLeft, FiChevronRight, FiGlobe, FiMic, FiCheckCircle, FiXCircle, FiClock, FiBarChart2 } from 'react-icons/fi';
 import {
   fetchVocabularyQueue,
   markVocabularyResult,
@@ -41,8 +41,10 @@ import {
   VocabularyStats,
 } from '../../../api/practice';
 import { searchVocabulary, translateDictionaryText, DictionaryDefinition } from '../../../api/dictionary';
+import { assessPronunciation, PronunciationAssessment } from '../../../api/practice';
 import { useTranslator } from '../../../hooks/useTranslator';
 import { useSpeechRecognition } from '../../../hooks/useSpeechRecognition';
+import { useAudioRecorder } from '../../../hooks/useAudioRecorder';
 import { ink, inkSoft, rose, roseDeep, card, line, serif, sage, sageDeep, roseTint, sageTint, amber, amberTint, amberDeep } from '../../../theme/brand';
 
 // English is what most users study first — it should be the tab you land on,
@@ -170,6 +172,14 @@ const StatPill = ({ label, value }: { label: string; value: string | number }) =
   </Box>
 );
 
+const blobToBase64 = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve((reader.result as string).split(',')[1] || '');
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+
 const VocabularyDrill = () => {
   const toast = useToast();
   const { languages: translatorLanguages } = useTranslator();
@@ -212,6 +222,14 @@ const VocabularyDrill = () => {
   // screen, and whether it matched.
   const [pronunciationResult, setPronunciationResult] = useState<{ heard: string; correct: boolean } | null>(null);
 
+  // Detailed pronunciation score — a second, heavier-weight check that
+  // actually uploads the recording for word-level scoring, distinct from
+  // the instant free client-side match above.
+  const [scoring, setScoring] = useState(false);
+  const [scoreResult, setScoreResult] = useState<PronunciationAssessment | null>(null);
+  const [scoreError, setScoreError] = useState<string | null>(null);
+  const { isRecording: isScoringRecording, startRecording, stopRecording, audioBlob, clearRecording } = useAudioRecorder();
+
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async (lang: string) => {
@@ -251,7 +269,42 @@ const VocabularyDrill = () => {
     setTranslateTarget(null);
     setTranslated(null);
     setPronunciationResult(null);
+    setScoreResult(null);
+    setScoreError(null);
+    clearRecording();
   }, [display?.word, searchResult]);
+
+  // Once a recording finishes (see getPronunciationScore below), upload it
+  // for the real word-level assessment.
+  useEffect(() => {
+    if (!audioBlob || !display) return;
+    (async () => {
+      try {
+        setScoring(true);
+        setScoreError(null);
+        const base64 = await blobToBase64(audioBlob);
+        const result = await assessPronunciation(display.word, display.language, base64);
+        setScoreResult(result);
+      } catch (err: any) {
+        setScoreError(err?.friendlyMessage || err?.response?.data?.error || 'Could not score that recording');
+      } finally {
+        setScoring(false);
+        clearRecording();
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioBlob]);
+
+  const getPronunciationScore = async () => {
+    if (isScoringRecording) {
+      stopRecording();
+      return;
+    }
+    setScoreResult(null);
+    setScoreError(null);
+    await startRecording().catch((err: Error) => setScoreError(err.message));
+    window.setTimeout(() => stopRecording(), 2500);
+  };
 
   const practicePronunciation = () => {
     if (!speechRecognition.supported || !display) return;
@@ -565,7 +618,72 @@ const VocabularyDrill = () => {
                     </Circle>
                   </Tooltip>
                 )}
+                <Tooltip label="Get a detailed pronunciation score" placement="top" openDelay={200}>
+                  <Circle
+                    as="button"
+                    size="40px"
+                    bg={isScoringRecording ? rose : scoreResult ? amberTint : card}
+                    color={isScoringRecording ? 'white' : scoreResult ? amberDeep : inkSoft}
+                    onClick={getPronunciationScore}
+                    _hover={{ bg: isScoringRecording ? roseDeep : amber, color: 'white' }}
+                    transition="all 0.15s"
+                    aria-label={isScoringRecording ? 'Recording — click to stop' : 'Get detailed pronunciation score'}
+                    flexShrink={0}
+                    opacity={scoring ? 0.6 : 1}
+                    pointerEvents={scoring ? 'none' : 'auto'}
+                  >
+                    {scoring ? <Spinner size="xs" /> : <Icon as={FiBarChart2} boxSize={4} />}
+                  </Circle>
+                </Tooltip>
               </HStack>
+
+              {isScoringRecording && (
+                <HStack justify="center" spacing={2} mb={3}>
+                  <Circle size="8px" bg={rose} sx={{ animation: 'vocabPulse 1.2s ease-in-out infinite' }} />
+                  <Text fontSize="xs" color={inkSoft} fontWeight="600">
+                    Recording — say "{display.word}" clearly
+                  </Text>
+                </HStack>
+              )}
+
+              {scoreError && !isScoringRecording && (
+                <Text fontSize="xs" color={roseDeep} textAlign="center" mb={3}>
+                  {scoreError}
+                </Text>
+              )}
+
+              {scoreResult && !isScoringRecording && (
+                <Box bg={amberTint} border="1px solid" borderColor={amber} borderRadius="xl" p={4} mb={3} maxW="420px" mx="auto">
+                  <HStack justify="center" spacing={3} mb={2}>
+                    <Text fontFamily={serif} fontWeight="700" fontSize="2xl" color={amberDeep}>
+                      {scoreResult.overallScore}%
+                    </Text>
+                    <Text fontSize="sm" color={inkSoft}>
+                      {scoreResult.feedback}
+                    </Text>
+                  </HStack>
+                  <HStack justify="center" spacing={4} fontSize="xs" color={inkSoft} mb={2}>
+                    <Text>Pronunciation {Math.round(scoreResult.pronunciationScore)}%</Text>
+                    <Text>Fluency {Math.round(scoreResult.fluencyScore)}%</Text>
+                    <Text>Clarity {Math.round(scoreResult.clarityScore)}%</Text>
+                  </HStack>
+                  <HStack justify="center" spacing={1.5} flexWrap="wrap">
+                    {scoreResult.wordScores.map((w, i) => (
+                      <Badge
+                        key={i}
+                        borderRadius="full"
+                        px={2}
+                        py={0.5}
+                        fontSize="10px"
+                        bg={w.score >= 80 ? sageTint : w.score >= 60 ? amberTint : roseTint}
+                        color={w.score >= 80 ? sageDeep : w.score >= 60 ? amberDeep : roseDeep}
+                      >
+                        {w.word} {w.score}%
+                      </Badge>
+                    ))}
+                  </HStack>
+                </Box>
+              )}
 
               {speechRecognition.isListening && (
                 <HStack justify="center" spacing={2} mb={3}>

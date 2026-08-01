@@ -152,6 +152,29 @@ export async function fetchVocabularyStats() {
   return handleResponse(response) as VocabularyStats;
 }
 
+export interface WordScore {
+  word: string;
+  score: number;
+  transcribed: string;
+  issues: string[];
+}
+
+export interface PronunciationAssessment {
+  speechSessionId: string;
+  transcribedText: string;
+  overallScore: number;
+  pronunciationScore: number;
+  fluencyScore: number;
+  clarityScore: number;
+  wordScores: WordScore[];
+  feedback: string;
+}
+
+export async function assessPronunciation(expectedText: string, language: string, audioBase64: string) {
+  const response = await client.post('/learn/practice/pronunciation/assess', { expectedText, language, audio: audioBase64 });
+  return handleResponse(response) as PronunciationAssessment;
+}
+
 export async function fetchRoleplayScenarios(category?: string) {
   const params = category ? { category } : {};
   const response = await client.get('/learn/practice/roleplay/scenarios', addCacheBust(params));
