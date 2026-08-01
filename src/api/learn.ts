@@ -87,3 +87,51 @@ export async function submitPlacementTest(answers: (string | number)[]): Promise
   const response = await client.post('/learn/placement-test/submit', { answers });
   return response.data.data;
 }
+
+export interface PathSummary {
+  id: string;
+  title: string;
+  description: string | null;
+  difficulty: string;
+  estimatedDuration: number;
+  _count: { steps: number; enrollments: number };
+  enrollment: { progress: number; status: string } | null;
+}
+
+export interface PathStepDetail {
+  id: string;
+  title: string;
+  description: string | null;
+  order: number;
+  isRequired: boolean;
+  courseId: string | null;
+  course: { id: string; title: string; description: string; level: string } | null;
+  courseEnrolled: boolean;
+  courseProgress: number;
+  courseCompleted: boolean;
+}
+
+export interface PathDetail {
+  id: string;
+  title: string;
+  description: string | null;
+  difficulty: string;
+  estimatedDuration: number;
+  steps: PathStepDetail[];
+  enrollment: { progress: number; status: string } | null;
+}
+
+export async function fetchPaths(): Promise<PathSummary[]> {
+  const response = await client.get('/paths');
+  return response.data.data;
+}
+
+export async function fetchPath(pathId: string): Promise<PathDetail> {
+  const response = await client.get(`/paths/${pathId}`);
+  return response.data.data;
+}
+
+export async function enrollPath(pathId: string) {
+  const response = await client.post(`/paths/${pathId}/enroll`);
+  return response.data.data;
+}
