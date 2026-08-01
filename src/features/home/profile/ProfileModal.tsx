@@ -48,6 +48,7 @@ import { fetchMyCertificates, type Certificate } from '../../../api/learn';
 import { ink, inkSoft, rose, roseDeep, card, line, serif, sage, sageDeep, roseTint, sageTint, amber, amberTint, cream } from '../../../theme/brand';
 import PrivacySections from '../../legal/PrivacySections';
 import CertificateModal from '../../certificates/CertificateModal';
+import PlacementTestModal from '../placement/PlacementTestModal';
 
 const LANGS = [
   { id: 'en', label: 'English' },
@@ -184,6 +185,7 @@ const ProfileModal = ({
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [loadingCertificates, setLoadingCertificates] = useState(false);
   const [viewingCertificate, setViewingCertificate] = useState<Certificate | null>(null);
+  const [showPlacementTest, setShowPlacementTest] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -458,6 +460,16 @@ const ProfileModal = ({
                       Proficiency level
                     </FormLabel>
                     <MenuSelect value={proficiencyLevel} options={LEVELS} onChange={setProficiencyLevel} />
+                    <Button
+                      size="xs"
+                      variant="link"
+                      color={rose}
+                      fontWeight="700"
+                      mt={2}
+                      onClick={() => setShowPlacementTest(true)}
+                    >
+                      Not sure? Take the 12-question placement test →
+                    </Button>
                   </FormControl>
 
                   <FormControl>
@@ -681,6 +693,14 @@ const ProfileModal = ({
           recipient={displayName}
         />
       )}
+      <PlacementTestModal
+        isOpen={showPlacementTest}
+        onClose={() => setShowPlacementTest(false)}
+        onComplete={(level) => {
+          setProficiencyLevel(level);
+          onUserUpdated?.();
+        }}
+      />
     </Modal>
   );
 };

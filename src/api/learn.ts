@@ -63,3 +63,27 @@ export async function fetchCourseCertificate(courseId: string): Promise<Certific
   const response = await client.get(`/certificates/course/${courseId}`);
   return response.data.data;
 }
+
+export interface PlacementQuestion {
+  index: number;
+  type: 'mc' | 'fill';
+  question: string;
+  options?: string[];
+}
+
+export interface PlacementResult {
+  score: number;
+  total: number;
+  recommendedLevel: string;
+  breakdown: { index: number; correct: boolean; explanation?: string }[];
+}
+
+export async function fetchPlacementTest(): Promise<PlacementQuestion[]> {
+  const response = await client.get('/learn/placement-test');
+  return response.data.data;
+}
+
+export async function submitPlacementTest(answers: (string | number)[]): Promise<PlacementResult> {
+  const response = await client.post('/learn/placement-test/submit', { answers });
+  return response.data.data;
+}
