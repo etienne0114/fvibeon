@@ -56,3 +56,29 @@ export async function fetchCommunityStats(): Promise<CommunityStats> {
   const response = await client.get('/community/stats');
   return handleResponse(response);
 }
+
+export interface AudioContribution {
+  id: string;
+  createdAt: string;
+  contributor: { username: string };
+}
+
+export async function fetchAudioForWord(word: string, language: string): Promise<AudioContribution[]> {
+  const response = await client.get('/community/audio', { params: { word, language } });
+  return handleResponse(response);
+}
+
+export function audioFileUrl(id: string) {
+  const base = (client.defaults.baseURL || '/api').replace(/\/$/, '');
+  return `${base}/community/audio/${id}/file`;
+}
+
+export async function submitAudioContribution(word: string, language: string, audioBase64: string, mimeType: string) {
+  const response = await client.post('/community/audio', { word, language, audio: audioBase64, mimeType });
+  return handleResponse(response);
+}
+
+export async function reportAudioContribution(id: string) {
+  const response = await client.post(`/community/audio/${id}/report`);
+  return handleResponse(response);
+}

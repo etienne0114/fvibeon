@@ -32,7 +32,7 @@ import {
   useToast,
 } from '@chakra-ui/react';
 import { CheckIcon, CloseIcon } from '@chakra-ui/icons';
-import { FiVolume2, FiSearch, FiX, FiChevronLeft, FiChevronRight, FiGlobe, FiMic, FiCheckCircle, FiXCircle, FiClock, FiBarChart2 } from 'react-icons/fi';
+import { FiVolume2, FiSearch, FiX, FiChevronLeft, FiChevronRight, FiGlobe, FiMic, FiCheckCircle, FiXCircle, FiClock, FiBarChart2, FiPlay, FiFlag, FiUsers } from 'react-icons/fi';
 import {
   fetchVocabularyQueue,
   markVocabularyResult,
@@ -42,6 +42,13 @@ import {
 } from '../../../api/practice';
 import { searchVocabulary, translateDictionaryText, DictionaryDefinition } from '../../../api/dictionary';
 import { assessPronunciation, PronunciationAssessment } from '../../../api/practice';
+import {
+  fetchAudioForWord,
+  submitAudioContribution,
+  reportAudioContribution,
+  audioFileUrl,
+  AudioContribution,
+} from '../../../api/community';
 import { useTranslator } from '../../../hooks/useTranslator';
 import { useSpeechRecognition } from '../../../hooks/useSpeechRecognition';
 import { useAudioRecorder } from '../../../hooks/useAudioRecorder';
@@ -230,6 +237,16 @@ const VocabularyDrill = () => {
   const [scoreError, setScoreError] = useState<string | null>(null);
   const { isRecording: isScoringRecording, startRecording, stopRecording, audioBlob, clearRecording } = useAudioRecorder();
 
+  // Community Audio — learner-recorded pronunciations for the word on
+  // screen (a real, honestly-labeled alternative to TTS; never claimed as
+  // "native speaker" since that can't be verified). Independent recorder
+  // instance from the scoring one above — different moment, different flow.
+  const [communityAudio, setCommunityAudio] = useState<AudioContribution[]>([]);
+  const [loadingCommunityAudio, setLoadingCommunityAudio] = useState(false);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [contributing, setContributing] = useState(false);
+  const contributeRecorder = useAudioRecorder();
+
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async (lang: string) => {
@@ -272,7 +289,65 @@ const VocabularyDrill = () => {
     setScoreResult(null);
     setScoreError(null);
     clearRecording();
+    contributeRecorder.clearRecording();
   }, [display?.word, searchResult]);
+
+  // Community Audio for the word currently on screen
+  useEffect(() => {
+    if (!display?.word) {
+      setCommunityAudio([]);
+      return;
+    }
+    setLoadingCommunityAudio(true);
+    fetchAudioForWord(display.word, display.language)
+      .then(setCommunityAudio)
+      .catch(() => setCommunityAudio([]))
+      .finally(() => setLoadingCommunityAudio(false));
+  }, [display?.word, display?.language]);
+
+  const playClip = (id: string) => {
+    const audio = new Audio(audioFileUrl(id));
+    setPlayingId(id);
+    audio.play().catch(() => setPlayingId(null));
+    audio.onended = () => setPlayingId(null);
+  };
+
+  const toggleContributeRecording = async () => {
+    if (contributeRecorder.isRecording) {
+      contributeRecorder.stopRecording();
+      return;
+    }
+    contributeRecorder.clearRecording();
+    await contributeRecorder.startRecording().catch(() => undefined);
+    window.setTimeout(() => contributeRecorder.stopRecording(), 4000);
+  };
+
+  const submitContribution = async () => {
+    if (!contributeRecorder.audioBlob || !display) return;
+    try {
+      setContributing(true);
+      const base64 = await blobToBase64(contributeRecorder.audioBlob);
+      await submitAudioContribution(display.word, display.language, base64, contributeRecorder.audioBlob.type);
+      contributeRecorder.clearRecording();
+      toast({ title: 'Recording shared — thank you!', status: 'success', duration: 2500, position: 'top' });
+      const refreshed = await fetchAudioForWord(display.word, display.language);
+      setCommunityAudio(refreshed);
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not submit recording', status: 'error', duration: 3000, position: 'top' });
+    } finally {
+      setContributing(false);
+    }
+  };
+
+  const reportClip = async (id: string) => {
+    try {
+      await reportAudioContribution(id);
+      setCommunityAudio((prev) => prev.filter((c) => c.id !== id));
+      toast({ title: 'Reported — thanks for flagging it', status: 'info', duration: 2000, position: 'top' });
+    } catch {
+      toast({ title: 'Could not report this recording', status: 'error', duration: 2500, position: 'top' });
+    }
+  };
 
   // Once a recording finishes (see getPronunciationScore below), upload it
   // for the real word-level assessment.
@@ -682,6 +757,76 @@ const VocabularyDrill = () => {
                       </Badge>
                     ))}
                   </HStack>
+                </Box>
+              )}
+
+              {!searchResult && (
+                <Box bg="white" border="1px solid" borderColor={line} borderRadius="xl" p={4} mb={3} maxW="420px" mx="auto" textAlign="left">
+                  <HStack justify="space-between" mb={2}>
+                    <HStack spacing={1.5}>
+                      <Icon as={FiUsers} boxSize={3.5} color={inkSoft} />
+                      <Text fontSize="xs" fontWeight="700" color={inkSoft} textTransform="uppercase" letterSpacing="0.05em">
+                        Community pronunciations
+                      </Text>
+                    </HStack>
+                  </HStack>
+
+                  {loadingCommunityAudio ? (
+                    <Skeleton h="32px" borderRadius="md" />
+                  ) : communityAudio.length === 0 ? (
+                    <Text fontSize="sm" color={inkSoft} mb={2}>
+                      No recordings yet — be the first to share yours.
+                    </Text>
+                  ) : (
+                    <Stack spacing={1.5} mb={2}>
+                      {communityAudio.map((c) => (
+                        <HStack key={c.id} justify="space-between" bg={card} borderRadius="md" px={3} py={1.5}>
+                          <HStack
+                            as="button"
+                            spacing={2}
+                            onClick={() => playClip(c.id)}
+                            color={playingId === c.id ? rose : ink}
+                          >
+                            <Icon as={FiPlay} boxSize={3} />
+                            <Text fontSize="sm">@{c.contributor.username}</Text>
+                          </HStack>
+                          <IconButton
+                            aria-label="Report this recording"
+                            icon={<Icon as={FiFlag} boxSize={3} />}
+                            size="xs"
+                            variant="ghost"
+                            color={inkSoft}
+                            onClick={() => reportClip(c.id)}
+                          />
+                        </HStack>
+                      ))}
+                    </Stack>
+                  )}
+
+                  {contributeRecorder.audioBlob ? (
+                    <Stack spacing={2}>
+                      <audio src={contributeRecorder.audioUrl || undefined} controls style={{ width: '100%', height: '32px' }} />
+                      <HStack spacing={2}>
+                        <Button size="xs" bg={sage} color="white" _hover={{ bg: sageDeep }} isLoading={contributing} onClick={submitContribution}>
+                          Share this recording
+                        </Button>
+                        <Button size="xs" variant="ghost" color={inkSoft} onClick={() => contributeRecorder.clearRecording()}>
+                          Discard
+                        </Button>
+                      </HStack>
+                    </Stack>
+                  ) : (
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      borderColor={line}
+                      color={contributeRecorder.isRecording ? rose : inkSoft}
+                      leftIcon={<Icon as={FiMic} boxSize={3} />}
+                      onClick={toggleContributeRecording}
+                    >
+                      {contributeRecorder.isRecording ? `Recording... ${contributeRecorder.formattedTime}` : 'Record your pronunciation'}
+                    </Button>
+                  )}
                 </Box>
               )}
 
