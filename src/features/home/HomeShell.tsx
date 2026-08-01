@@ -24,6 +24,7 @@ import {
   FiAward,
   FiLogOut,
   FiMap,
+  FiUsers,
 } from 'react-icons/fi';
 import { ink, inkSoft, rose, cream, line, serif, roseTint, sageTint } from '../../theme/brand';
 
@@ -41,6 +42,7 @@ export const HOME_SECTIONS: HomeSection[] = [
   { id: 'reading', title: 'Reading', icon: FiBookmark },
   { id: 'listening', title: 'Listening', icon: FiHeadphones },
   { id: 'practices', title: 'Practice', icon: FiTarget },
+  { id: 'community', title: 'Community', icon: FiUsers },
   { id: 'achievements', title: 'Achievements', icon: FiAward },
 ];
 

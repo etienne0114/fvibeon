@@ -16,6 +16,7 @@ const ReadingView = lazy(() => import('../../home/reading/ReadingView'));
 const ListeningView = lazy(() => import('../../home/listening/ListeningView'));
 const CoursesView = lazy(() => import('../../home/CoursesView'));
 const LearningPathsView = lazy(() => import('../../home/paths/LearningPathsView'));
+const CommunityView = lazy(() => import('../../home/community/CommunityView'));
 
 const PanelFallback = () => (
   <Stack spacing={4}>
@@ -63,6 +64,12 @@ const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
         return <CoursesView openCourseId={openCourseId} onOpenCourse={setOpenCourseId} onDataChanged={refetch} />;
       case 'paths':
         return <LearningPathsView openPathId={openPathId} onOpenPath={setOpenPathId} onOpenCourse={openCourse} />;
+      case 'community':
+        return (
+          <PanelSurface>
+            <CommunityView />
+          </PanelSurface>
+        );
       case 'translator':
         return (
           <PanelSurface>
