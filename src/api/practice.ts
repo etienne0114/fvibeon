@@ -39,6 +39,7 @@ export interface VocabularyStats {
   learning: number;
   accuracy: number;
   currentStreak: number;
+  dueForReview: number;
 }
 
 export interface RoleplayScenario {

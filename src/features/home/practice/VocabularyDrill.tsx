@@ -32,7 +32,7 @@ import {
   useToast,
 } from '@chakra-ui/react';
 import { CheckIcon, CloseIcon } from '@chakra-ui/icons';
-import { FiVolume2, FiSearch, FiX, FiChevronLeft, FiChevronRight, FiGlobe, FiMic, FiCheckCircle, FiXCircle } from 'react-icons/fi';
+import { FiVolume2, FiSearch, FiX, FiChevronLeft, FiChevronRight, FiGlobe, FiMic, FiCheckCircle, FiXCircle, FiClock } from 'react-icons/fi';
 import {
   fetchVocabularyQueue,
   markVocabularyResult,
@@ -43,7 +43,7 @@ import {
 import { searchVocabulary, translateDictionaryText, DictionaryDefinition } from '../../../api/dictionary';
 import { useTranslator } from '../../../hooks/useTranslator';
 import { useSpeechRecognition } from '../../../hooks/useSpeechRecognition';
-import { ink, inkSoft, rose, roseDeep, card, line, serif, sage, sageDeep, roseTint, sageTint, amber } from '../../../theme/brand';
+import { ink, inkSoft, rose, roseDeep, card, line, serif, sage, sageDeep, roseTint, sageTint, amber, amberTint, amberDeep } from '../../../theme/brand';
 
 // English is what most users study first — it should be the tab you land on,
 // not something you have to switch to every time you open Vocabulary.
@@ -447,9 +447,19 @@ const VocabularyDrill = () => {
         </Alert>
       )}
 
+      {!searchResult && stats && stats.dueForReview > 0 && (
+        <HStack bg={amberTint} border="1px solid" borderColor={amber} borderRadius="xl" px={4} py={3} spacing={3}>
+          <Icon as={FiClock} color={amberDeep} boxSize={4} />
+          <Text fontSize="sm" color={amberDeep} fontWeight="600">
+            {stats.dueForReview} word{stats.dueForReview === 1 ? '' : 's'} due for review — they're already queued up below.
+          </Text>
+        </HStack>
+      )}
+
       {!searchResult && stats && (
-        <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3}>
+        <SimpleGrid columns={{ base: 3, md: 5 }} spacing={3}>
           <StatPill label="Words" value={stats.totalWords} />
+          <StatPill label="Due" value={stats.dueForReview} />
           <StatPill label="Mastered" value={stats.mastered} />
           <StatPill label="Accuracy" value={`${stats.accuracy}%`} />
           <StatPill label="Streak" value={stats.currentStreak} />
