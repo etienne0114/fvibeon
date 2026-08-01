@@ -51,6 +51,18 @@ const App = () => {
     logout,
   } = useAuth();
 
+  // A direct "#auth" link (e.g. from a re-engagement email) means "sign in
+  // as me" — if a *different* account is already signed in on this browser,
+  // silently continuing as them instead of prompting the intended recipient
+  // to log in is the wrong outcome. Force a fresh sign-in whenever this
+  // specific link is followed, regardless of who was already logged in.
+  useEffect(() => {
+    if (window.location.hash === '#auth' && token) {
+      logout();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleSubmit = async (payload: { email: string; password: string }) => {
     try {
       await authenticate(payload, 'login');
