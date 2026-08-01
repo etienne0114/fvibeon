@@ -8,6 +8,9 @@ export interface DashboardSummary {
   streakDays: number;
   totalTimeMinutes: number;
   lessonsCompleted: number;
+  streakFreezes: number;
+  streakFreezeJustUsed: boolean;
+  streakFreezeJustGranted: boolean;
 }
 
 export interface DashboardCourse {

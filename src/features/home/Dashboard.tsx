@@ -26,6 +26,7 @@ import {
   serif,
   sage,
   amber,
+  amberDeep,
   roseTint,
   sageTint,
   amberTint,
@@ -253,6 +254,19 @@ const Dashboard = ({ data, isLoading, error, retryable, onRetry, username, daily
         </Alert>
       )}
 
+      {summary?.streakFreezeJustUsed && (
+        <Alert status="info" borderRadius="xl" fontSize="sm" bg={sageTint} color={sage}>
+          <AlertIcon color={sage} />
+          A streak freeze covered a missed day — your streak stayed alive. ❄️
+        </Alert>
+      )}
+      {summary?.streakFreezeJustGranted && (
+        <Alert status="success" borderRadius="xl" fontSize="sm" bg={amberTint} color={amberDeep}>
+          <AlertIcon color={amberDeep} />
+          A week of consistency earned you a new streak freeze! 🎉
+        </Alert>
+      )}
+
       {/* Greeting */}
       <Flex justify="space-between" align="center" wrap="wrap" gap={4}>
         <Box>
@@ -269,7 +283,17 @@ const Dashboard = ({ data, isLoading, error, retryable, onRetry, username, daily
 
       {/* Stats */}
       <SimpleGrid columns={{ base: 2, lg: 4 }} spacing={{ base: 3, md: 4 }}>
-        <StatTile icon={FiPlay} tile={rose} label="Day streak" value={summary?.streakDays ?? 0} helper="Learn daily to grow it" />
+        <StatTile
+          icon={FiPlay}
+          tile={rose}
+          label="Day streak"
+          value={summary?.streakDays ?? 0}
+          helper={
+            summary?.streakFreezes
+              ? `❄️ ${summary.streakFreezes} freeze${summary.streakFreezes === 1 ? '' : 's'} available`
+              : 'Learn daily to grow it'
+          }
+        />
         <StatTile icon={FiClock} tile={sage} label="Time learned" value={hours} helper="Across all lessons" />
         <StatTile icon={FiCheckCircle} tile={amber} label="Lessons done" value={summary?.lessonsCompleted ?? 0} helper="Completed lessons" />
         <StatTile icon={FiBookOpen} tile={ink} label="Courses" value={`${summary?.completedCourses ?? 0}/${summary?.enrolledCourses ?? 0}`} helper="Completed / enrolled" />
