@@ -2,8 +2,11 @@ import { useState } from 'react';
 import {
   Box,
   Button,
+  FormControl,
+  FormLabel,
   HStack,
   Icon,
+  Input,
   Modal,
   ModalBody,
   ModalCloseButton,
@@ -15,10 +18,11 @@ import {
   RadioGroup,
   Select,
   Stack,
+  Switch,
   Text,
 } from '@chakra-ui/react';
 import { FiClock, FiMessageCircle } from 'react-icons/fi';
-import { SpeakingMode } from '../../api/calls';
+import { SpeakingMode, StartCallSettings } from '../../api/calls';
 import { ink, inkSoft, rose, roseDeep, card, line, serif } from '../../theme/brand';
 
 const SPEAKER_TIME_OPTIONS = [30, 60, 90, 120, 180];
@@ -26,7 +30,8 @@ const SPEAKER_TIME_OPTIONS = [30, 60, 90, 120, 180];
 /* Shown once, when someone starts a fresh call — the settings only apply to a
    brand-new session, so anyone joining an in-progress call skips this. This is
    the feature that makes calls here different from a plain Meet/Zoom window:
-   structured speaking turns, purpose-built for practice/debate sessions. */
+   structured speaking turns and a real front door, purpose-built for practice
+   and debate sessions rather than a copy of a generic video-call window. */
 const MeetingSettingsModal = ({
   isOpen,
   channelName,
@@ -36,12 +41,22 @@ const MeetingSettingsModal = ({
   isOpen: boolean;
   channelName: string;
   onClose: () => void;
-  onStart: (settings: { speakingMode: SpeakingMode; speakerTimeSec?: number }) => void;
+  onStart: (settings: StartCallSettings) => void;
 }) => {
   const [mode, setMode] = useState<SpeakingMode>('OPEN');
   const [seconds, setSeconds] = useState(60);
+  const [topic, setTopic] = useState('');
+  const [requireApproval, setRequireApproval] = useState(false);
+  const [autoMuteOnJoin, setAutoMuteOnJoin] = useState(false);
 
-  const start = () => onStart(mode === 'STRUCTURED' ? { speakingMode: mode, speakerTimeSec: seconds } : { speakingMode: mode });
+  const start = () =>
+    onStart({
+      speakingMode: mode,
+      ...(mode === 'STRUCTURED' ? { speakerTimeSec: seconds } : {}),
+      ...(topic.trim() ? { topic: topic.trim() } : {}),
+      requireApproval,
+      autoMuteOnJoin,
+    });
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} isCentered size="sm">
@@ -51,6 +66,13 @@ const MeetingSettingsModal = ({
         <ModalCloseButton />
         <ModalBody>
           <Stack spacing={4}>
+            <FormControl>
+              <FormLabel fontSize="sm" color={inkSoft} mb={1}>
+                Topic <Text as="span" color={inkSoft} fontWeight="400">(optional)</Text>
+              </FormLabel>
+              <Input size="sm" value={topic} onChange={(e) => setTopic(e.target.value)} borderColor={line} placeholder="e.g. Debate: remote work" />
+            </FormControl>
+
             <Text fontSize="sm" color={inkSoft}>
               Choose how the conversation flows. This applies for everyone in the call.
             </Text>
@@ -98,6 +120,20 @@ const MeetingSettingsModal = ({
                 </Box>
               </Stack>
             </RadioGroup>
+
+            <FormControl display="flex" alignItems="center" justifyContent="space-between">
+              <FormLabel fontSize="sm" color={ink} mb={0}>
+                Require approval to join
+              </FormLabel>
+              <Switch isChecked={requireApproval} onChange={(e) => setRequireApproval(e.target.checked)} colorScheme="blackAlpha" />
+            </FormControl>
+
+            <FormControl display="flex" alignItems="center" justifyContent="space-between">
+              <FormLabel fontSize="sm" color={ink} mb={0}>
+                Mute everyone on join
+              </FormLabel>
+              <Switch isChecked={autoMuteOnJoin} onChange={(e) => setAutoMuteOnJoin(e.target.checked)} colorScheme="blackAlpha" />
+            </FormControl>
           </Stack>
         </ModalBody>
         <ModalFooter>

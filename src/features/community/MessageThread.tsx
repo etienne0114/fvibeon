@@ -38,7 +38,7 @@ import {
   ChannelMessage,
   DebateRequest,
 } from '../../api/spaces';
-import { fetchActiveCall, ActiveCall, SpeakingMode } from '../../api/calls';
+import { fetchActiveCall, ActiveCall, StartCallSettings } from '../../api/calls';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
 import { useWebRTCCall } from '../../hooks/useWebRTCCall';
 import { useMe } from '../../hooks/useMe';
@@ -382,7 +382,7 @@ export const ChannelThread = ({
     }
   };
 
-  const confirmStartCall = async (settings: { speakingMode: SpeakingMode; speakerTimeSec?: number }) => {
+  const confirmStartCall = async (settings: StartCallSettings) => {
     setShowCallSettings(false);
     setShowCallPanel(true);
     await call.join(channel.id, me?.id || '', undefined, settings);
@@ -696,18 +696,28 @@ export const ChannelThread = ({
         cameraEnabled={call.cameraEnabled}
         myUsername={me?.username || 'You'}
         myUserId={me?.id}
-        isModerator={isModerator}
         speakingMode={call.speakingMode}
         speakerTimeSec={call.speakerTimeSec}
         currentSpeaker={call.currentSpeaker}
         currentSpeakerStartedAt={call.currentSpeakerStartedAt}
         queue={call.queue}
+        topic={call.topic}
+        requireApproval={call.requireApproval}
+        autoMuteOnJoin={call.autoMuteOnJoin}
+        isHost={call.isHost}
+        joinRequests={call.joinRequests}
+        callStartedAt={call.callStartedAt}
         onToggleMic={call.toggleMic}
         onToggleCamera={call.toggleCamera}
         onLeave={leaveCallPanel}
         onRaiseHand={call.raiseHand}
         onLowerHand={call.lowerHand}
         onSkipSpeaker={call.skipSpeaker}
+        onUpdateSettings={call.updateSettings}
+        onAdmit={call.admitJoinRequest}
+        onDeny={call.denyJoinRequest}
+        onKick={call.kickParticipant}
+        onForceMute={call.forceMuteParticipant}
       />
     </Stack>
   );

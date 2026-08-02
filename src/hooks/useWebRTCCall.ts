@@ -5,12 +5,19 @@ import {
   sendCallSignal,
   pollCallSignals,
   fetchCallState,
+  fetchJoinRequestStatus,
   raiseHand as apiRaiseHand,
   lowerHand as apiLowerHand,
   advanceSpeaker as apiAdvanceSpeaker,
+  resolveJoinRequest as apiResolveJoinRequest,
+  updateCallSettings as apiUpdateCallSettings,
+  removeParticipant as apiRemoveParticipant,
   CallParticipant,
+  CallSettingsState,
+  PendingJoinRequest,
   QueuedSpeaker,
   SpeakingMode,
+  StartCallSettings,
 } from '../api/calls';
 
 // Google's public STUN servers — free, no account, no cost. No TURN relay
@@ -21,15 +28,18 @@ const ICE_SERVERS: RTCIceServer[] = [
 ];
 
 const POLL_INTERVAL_MS = 1500;
+const APPROVAL_POLL_INTERVAL_MS = 2000;
 
 export interface RemoteParticipant {
   userId: string;
   username: string;
   stream: MediaStream | null;
+  micEnabled: boolean;
+  cameraEnabled: boolean;
 }
 
 export function useWebRTCCall() {
-  const [status, setStatus] = useState<'idle' | 'connecting' | 'in-call' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'connecting' | 'pending-approval' | 'in-call' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteParticipants, setRemoteParticipants] = useState<Map<string, RemoteParticipant>>(new Map());
@@ -45,20 +55,37 @@ export function useWebRTCCall() {
   const [currentSpeakerStartedAt, setCurrentSpeakerStartedAt] = useState<string | null>(null);
   const [queue, setQueue] = useState<QueuedSpeaker[]>([]);
 
+  // Live, host-configurable call settings + the door — a real approval flow, not decoration.
+  const [requireApproval, setRequireApproval] = useState(false);
+  const [autoMuteOnJoin, setAutoMuteOnJoin] = useState(false);
+  const [topic, setTopic] = useState<string | null>(null);
+  const [isHost, setIsHost] = useState(false);
+  const [joinRequests, setJoinRequests] = useState<PendingJoinRequest[]>([]);
+  const [callStartedAt, setCallStartedAt] = useState<string | null>(null);
+
   const callSessionIdRef = useRef<string | null>(null);
   const myUserIdRef = useRef<string | null>(null);
+  const pendingChannelIdRef = useRef<string | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const usernamesRef = useRef<Map<string, string>>(new Map());
   const lastSignalAtRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const approvalPollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const advanceInFlightRef = useRef(false);
+  const leaveRef = useRef<() => Promise<void>>(async () => undefined);
 
   const upsertRemoteParticipant = useCallback((userId: string, patch: Partial<RemoteParticipant>) => {
     setRemoteParticipants((prev) => {
       const next = new Map(prev);
-      const existing = next.get(userId) || { userId, username: usernamesRef.current.get(userId) || 'Learner', stream: null };
+      const existing = next.get(userId) || {
+        userId,
+        username: usernamesRef.current.get(userId) || 'Learner',
+        stream: null,
+        micEnabled: true,
+        cameraEnabled: true,
+      };
       next.set(userId, { ...existing, ...patch });
       return next;
     });
@@ -153,33 +180,51 @@ export function useWebRTCCall() {
       else if (signal.type === 'ANSWER') await handleAnswer(signal.fromUserId, payload);
       else if (signal.type === 'ICE_CANDIDATE') await handleIceCandidate(signal.fromUserId, payload);
       else if (signal.type === 'LEAVE') handleLeave(signal.fromUserId);
-    }
-  }, [handleOffer, handleAnswer, handleIceCandidate, handleLeave]);
-
-  const applySpeakingState = useCallback(
-    (state: { speakingMode: SpeakingMode; speakerTimeSec: number | null; currentSpeaker: QueuedSpeaker | null; currentSpeakerStartedAt: string | null; queue: QueuedSpeaker[] }) => {
-      setSpeakingMode(state.speakingMode);
-      setSpeakerTimeSec(state.speakerTimeSec);
-      setCurrentSpeaker(state.currentSpeaker);
-      setCurrentSpeakerStartedAt(state.currentSpeakerStartedAt);
-      setQueue(state.queue);
-
-      // In structured mode, only the current speaker's mic is actually live — enforced here,
-      // not just in the UI, so no one can talk over their turn.
-      if (state.speakingMode === 'STRUCTURED') {
-        const isMyTurn = state.currentSpeaker?.id === myUserIdRef.current;
-        localStreamRef.current?.getAudioTracks().forEach((t) => (t.enabled = isMyTurn));
-        setMicEnabled(isMyTurn);
+      else if (signal.type === 'MEDIA_STATE') {
+        upsertRemoteParticipant(signal.fromUserId, { micEnabled: Boolean(payload?.micEnabled), cameraEnabled: Boolean(payload?.cameraEnabled) });
+      } else if (signal.type === 'FORCE_MUTE') {
+        localStreamRef.current?.getAudioTracks().forEach((t) => (t.enabled = false));
+        setMicEnabled(false);
+        if (callSessionIdRef.current) {
+          const liveCameraEnabled = localStreamRef.current?.getVideoTracks().some((t) => t.enabled) ?? false;
+          sendCallSignal(callSessionIdRef.current, 'MEDIA_STATE', null, { micEnabled: false, cameraEnabled: liveCameraEnabled }).catch(() => undefined);
+        }
+      } else if (signal.type === 'KICKED') {
+        await leaveRef.current();
+        setError('You were removed from the call by the host.');
+        setStatus('error');
       }
-    },
-    [],
-  );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleOffer, handleAnswer, handleIceCandidate, handleLeave, upsertRemoteParticipant]);
+
+  const applyCallSettingsState = useCallback((state: CallSettingsState) => {
+    setSpeakingMode(state.speakingMode);
+    setSpeakerTimeSec(state.speakerTimeSec);
+    setCurrentSpeaker(state.currentSpeaker);
+    setCurrentSpeakerStartedAt(state.currentSpeakerStartedAt);
+    setQueue(state.queue);
+    setRequireApproval(state.requireApproval);
+    setAutoMuteOnJoin(state.autoMuteOnJoin);
+    setTopic(state.topic);
+    setIsHost(state.isHost);
+    setJoinRequests(state.joinRequests);
+    setCallStartedAt(state.startedAt);
+
+    // In structured mode, only the current speaker's mic is actually live — enforced here,
+    // not just in the UI, so no one can talk over their turn.
+    if (state.speakingMode === 'STRUCTURED') {
+      const isMyTurn = state.currentSpeaker?.id === myUserIdRef.current;
+      localStreamRef.current?.getAudioTracks().forEach((t) => (t.enabled = isMyTurn));
+      setMicEnabled(isMyTurn);
+    }
+  }, []);
 
   const refreshCallState = useCallback(async () => {
     if (!callSessionIdRef.current) return;
     const state = await fetchCallState(callSessionIdRef.current).catch(() => null);
     if (!state) return;
-    applySpeakingState(state);
+    applyCallSettingsState(state);
 
     // Only the speaker's own client auto-advances when their time is up (the host can always
     // skip manually as a fallback if that client has gone away).
@@ -197,18 +242,75 @@ export function useWebRTCCall() {
         advanceInFlightRef.current = false;
       }
     }
-  }, [applySpeakingState]);
+  }, [applyCallSettingsState]);
+
+  const finishJoining = useCallback(
+    async (result: { callSessionId: string; participants: CallParticipant[] } & CallSettingsState, overrideParticipants?: CallParticipant[]) => {
+      callSessionIdRef.current = result.callSessionId;
+      lastSignalAtRef.current = new Date().toISOString();
+      applyCallSettingsState(result);
+
+      if (result.autoMuteOnJoin) {
+        localStreamRef.current?.getAudioTracks().forEach((t) => (t.enabled = false));
+        setMicEnabled(false);
+      }
+
+      const participants = overrideParticipants || result.participants;
+      for (const p of participants) {
+        usernamesRef.current.set(p.userId, p.user.username);
+        upsertRemoteParticipant(p.userId, {});
+        const pc = createPeerConnection(p.userId);
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await sendCallSignal(result.callSessionId, 'OFFER', p.userId, offer);
+      }
+
+      // Let existing participants know our real starting mic/camera state right away.
+      await sendCallSignal(result.callSessionId, 'MEDIA_STATE', null, {
+        micEnabled: !result.autoMuteOnJoin,
+        cameraEnabled: localStreamRef.current?.getVideoTracks().some((t) => t.enabled) ?? false,
+      }).catch(() => undefined);
+
+      pollTimerRef.current = setInterval(() => {
+        pollOnce();
+        refreshCallState();
+      }, POLL_INTERVAL_MS);
+      setStatus('in-call');
+    },
+    [applyCallSettingsState, createPeerConnection, pollOnce, refreshCallState, upsertRemoteParticipant],
+  );
+
+  const checkApproval = useCallback(async () => {
+    if (!callSessionIdRef.current) return;
+    const { status: reqStatus } = await fetchJoinRequestStatus(callSessionIdRef.current).catch(() => ({ status: null }));
+    if (reqStatus === 'APPROVED') {
+      if (approvalPollTimerRef.current) clearInterval(approvalPollTimerRef.current);
+      approvalPollTimerRef.current = null;
+      const channelId = pendingChannelIdRef.current;
+      if (!channelId) return;
+      const result = await joinCall(channelId).catch(() => null);
+      if (result && !result.pending) await finishJoining(result);
+      else {
+        setError("Couldn't join after being admitted — try again.");
+        setStatus('error');
+      }
+    } else if (reqStatus === 'DENIED') {
+      if (approvalPollTimerRef.current) clearInterval(approvalPollTimerRef.current);
+      approvalPollTimerRef.current = null;
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+      setLocalStream(null);
+      setError('The host declined your request to join.');
+      setStatus('error');
+    }
+  }, [finishJoining]);
 
   const join = useCallback(
-    async (
-      channelId: string,
-      myUserId: string,
-      existingParticipants?: CallParticipant[],
-      settings?: { speakingMode: SpeakingMode; speakerTimeSec?: number },
-    ) => {
+    async (channelId: string, myUserId: string, existingParticipants?: CallParticipant[], settings?: StartCallSettings) => {
       setStatus('connecting');
       setError(null);
       myUserIdRef.current = myUserId;
+      pendingChannelIdRef.current = channelId;
       try {
         let stream: MediaStream;
         try {
@@ -222,34 +324,27 @@ export function useWebRTCCall() {
         setLocalStream(stream);
 
         const result = await joinCall(channelId, settings);
-        callSessionIdRef.current = result.callSessionId;
-        lastSignalAtRef.current = new Date().toISOString();
-        applySpeakingState(result);
-
-        const participants = existingParticipants || result.participants;
-        for (const p of participants) {
-          usernamesRef.current.set(p.userId, p.user.username);
-          upsertRemoteParticipant(p.userId, {});
-          const pc = createPeerConnection(p.userId);
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          await sendCallSignal(result.callSessionId, 'OFFER', p.userId, offer);
+        if (result.pending) {
+          callSessionIdRef.current = result.callSessionId;
+          setTopic(result.topic);
+          setSpeakingMode(result.speakingMode);
+          setStatus('pending-approval');
+          approvalPollTimerRef.current = setInterval(checkApproval, APPROVAL_POLL_INTERVAL_MS);
+          return;
         }
 
-        pollTimerRef.current = setInterval(() => {
-          pollOnce();
-          refreshCallState();
-        }, POLL_INTERVAL_MS);
-        setStatus('in-call');
+        await finishJoining(result, existingParticipants);
       } catch (err: any) {
         setError(err?.response?.data?.error || err?.message || 'Could not join the call — check camera/mic permissions.');
         setStatus('error');
       }
     },
-    [createPeerConnection, pollOnce, refreshCallState, applySpeakingState, upsertRemoteParticipant],
+    [checkApproval, finishJoining],
   );
 
   const leave = useCallback(async () => {
+    if (approvalPollTimerRef.current) clearInterval(approvalPollTimerRef.current);
+    approvalPollTimerRef.current = null;
     if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     pollTimerRef.current = null;
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -264,6 +359,7 @@ export function useWebRTCCall() {
     }
     callSessionIdRef.current = null;
     myUserIdRef.current = null;
+    pendingChannelIdRef.current = null;
     lastSignalAtRef.current = null;
     advanceInFlightRef.current = false;
     setSpeakingMode('OPEN');
@@ -271,39 +367,87 @@ export function useWebRTCCall() {
     setCurrentSpeaker(null);
     setCurrentSpeakerStartedAt(null);
     setQueue([]);
+    setRequireApproval(false);
+    setAutoMuteOnJoin(false);
+    setTopic(null);
+    setIsHost(false);
+    setJoinRequests([]);
+    setCallStartedAt(null);
+    setMicEnabled(true);
+    setCameraEnabled(true);
     setStatus('idle');
   }, []);
+  leaveRef.current = leave;
 
   const toggleMic = useCallback(() => {
     if (speakingMode === 'STRUCTURED') return; // mic is turn-controlled — use raise/lower hand instead
     const next = !micEnabled;
     localStreamRef.current?.getAudioTracks().forEach((t) => (t.enabled = next));
     setMicEnabled(next);
-  }, [micEnabled, speakingMode]);
-
-  const raiseHand = useCallback(async () => {
-    if (!callSessionIdRef.current) return;
-    const state = await apiRaiseHand(callSessionIdRef.current).catch(() => null);
-    if (state) applySpeakingState(state);
-  }, [applySpeakingState]);
-
-  const lowerHand = useCallback(async () => {
-    if (!callSessionIdRef.current) return;
-    const state = await apiLowerHand(callSessionIdRef.current).catch(() => null);
-    if (state) applySpeakingState(state);
-  }, [applySpeakingState]);
-
-  const skipSpeaker = useCallback(async () => {
-    if (!callSessionIdRef.current) return;
-    const state = await apiAdvanceSpeaker(callSessionIdRef.current).catch(() => null);
-    if (state) applySpeakingState(state);
-  }, [applySpeakingState]);
+    if (callSessionIdRef.current) {
+      sendCallSignal(callSessionIdRef.current, 'MEDIA_STATE', null, { micEnabled: next, cameraEnabled }).catch(() => undefined);
+    }
+  }, [micEnabled, cameraEnabled, speakingMode]);
 
   const toggleCamera = useCallback(() => {
     const next = !cameraEnabled;
     localStreamRef.current?.getVideoTracks().forEach((t) => (t.enabled = next));
     setCameraEnabled(next);
-  }, [cameraEnabled]);
+    if (callSessionIdRef.current) {
+      sendCallSignal(callSessionIdRef.current, 'MEDIA_STATE', null, { micEnabled, cameraEnabled: next }).catch(() => undefined);
+    }
+  }, [cameraEnabled, micEnabled]);
+
+  const raiseHand = useCallback(async () => {
+    if (!callSessionIdRef.current) return;
+    const state = await apiRaiseHand(callSessionIdRef.current).catch(() => null);
+    if (state) applyCallSettingsState(state);
+  }, [applyCallSettingsState]);
+
+  const lowerHand = useCallback(async () => {
+    if (!callSessionIdRef.current) return;
+    const state = await apiLowerHand(callSessionIdRef.current).catch(() => null);
+    if (state) applyCallSettingsState(state);
+  }, [applyCallSettingsState]);
+
+  const skipSpeaker = useCallback(async () => {
+    if (!callSessionIdRef.current) return;
+    const state = await apiAdvanceSpeaker(callSessionIdRef.current).catch(() => null);
+    if (state) applyCallSettingsState(state);
+  }, [applyCallSettingsState]);
+
+  const updateSettings = useCallback(
+    async (patch: Partial<{ speakingMode: SpeakingMode; speakerTimeSec: number; topic: string; requireApproval: boolean; autoMuteOnJoin: boolean }>) => {
+      if (!callSessionIdRef.current) return;
+      const state = await apiUpdateCallSettings(callSessionIdRef.current, patch).catch(() => null);
+      if (state) applyCallSettingsState(state);
+    },
+    [applyCallSettingsState],
+  );
+
+  const admitJoinRequest = useCallback(async (requesterId: string) => {
+    if (!callSessionIdRef.current) return;
+    await apiResolveJoinRequest(callSessionIdRef.current, requesterId, 'APPROVE').catch(() => undefined);
+  }, []);
+
+  const denyJoinRequest = useCallback(async (requesterId: string) => {
+    if (!callSessionIdRef.current) return;
+    await apiResolveJoinRequest(callSessionIdRef.current, requesterId, 'DENY').catch(() => undefined);
+  }, []);
+
+  const kickParticipant = useCallback(
+    async (targetUserId: string) => {
+      if (!callSessionIdRef.current) return;
+      await apiRemoveParticipant(callSessionIdRef.current, targetUserId).catch(() => undefined);
+      handleLeave(targetUserId);
+    },
+    [handleLeave],
+  );
+
+  const forceMuteParticipant = useCallback(async (targetUserId: string) => {
+    if (!callSessionIdRef.current) return;
+    await sendCallSignal(callSessionIdRef.current, 'FORCE_MUTE', targetUserId, {}).catch(() => undefined);
+  }, []);
 
   return {
     status,
@@ -317,6 +461,12 @@ export function useWebRTCCall() {
     currentSpeaker,
     currentSpeakerStartedAt,
     queue,
+    requireApproval,
+    autoMuteOnJoin,
+    topic,
+    isHost,
+    joinRequests,
+    callStartedAt,
     join,
     leave,
     toggleMic,
@@ -324,5 +474,10 @@ export function useWebRTCCall() {
     raiseHand,
     lowerHand,
     skipSpeaker,
+    updateSettings,
+    admitJoinRequest,
+    denyJoinRequest,
+    kickParticipant,
+    forceMuteParticipant,
   };
 }

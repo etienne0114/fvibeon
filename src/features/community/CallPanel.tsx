@@ -1,10 +1,28 @@
-import { useEffect, useRef, useState } from 'react';
-import { Avatar, AvatarGroup, Badge, Box, Button, Circle, Grid, HStack, Icon, IconButton, Modal, ModalContent, ModalOverlay, Stack, Text, Alert, AlertIcon } from '@chakra-ui/react';
-import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiPhoneOff, FiClock, FiSkipForward } from 'react-icons/fi';
+import { useEffect, useState } from 'react';
+import {
+  Alert,
+  AlertIcon,
+  Box,
+  Button,
+  Grid,
+  HStack,
+  Icon,
+  IconButton,
+  Modal,
+  ModalContent,
+  ModalOverlay,
+  Spinner,
+  Stack,
+  Text,
+} from '@chakra-ui/react';
+import { FiClock, FiMic, FiMicOff, FiPhoneOff, FiSkipForward, FiVideo, FiVideoOff } from 'react-icons/fi';
 import { PiHandPalmFill } from 'react-icons/pi';
 import { RemoteParticipant } from '../../hooks/useWebRTCCall';
-import { QueuedSpeaker, SpeakingMode } from '../../api/calls';
+import { PendingJoinRequest, QueuedSpeaker, SpeakingMode } from '../../api/calls';
 import { ink, inkSoft, rose, roseDeep, sage, sageDeep, sageTint, card, line, serif } from '../../theme/brand';
+import VideoTile from './call/VideoTile';
+import CallSidebar, { SidebarParticipant } from './call/CallSidebar';
+import CallSettingsPopover from './call/CallSettingsPopover';
 
 /* Ticking "Ns left" label for the current speaker's turn — recomputed every second from
    the server-recorded start time, so it stays correct even if this tab was backgrounded. */
@@ -22,56 +40,20 @@ const SpeakerTimer = ({ startedAt, durationSec }: { startedAt: string; durationS
   );
 };
 
-const VideoTile = ({
-  stream,
-  label,
-  muted,
-  cameraOff,
-  isSpeaking,
-}: {
-  stream: MediaStream | null;
-  label: string;
-  muted?: boolean;
-  cameraOff?: boolean;
-  isSpeaking?: boolean;
-}) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-
+/* Running call length, mm:ss — the small professional touch every real meeting app has. */
+const CallDuration = ({ startedAt }: { startedAt: string }) => {
+  const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    if (videoRef.current) videoRef.current.srcObject = stream;
-  }, [stream]);
-
-  const hasVideoTrack = Boolean(stream?.getVideoTracks().some((t) => t.enabled));
-
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const elapsed = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
+  const m = Math.floor(elapsed / 60);
+  const s = elapsed % 60;
   return (
-    <Box
-      position="relative"
-      bg={ink}
-      borderRadius="lg"
-      overflow="hidden"
-      aspectRatio="4/3"
-      minH="140px"
-      outline={isSpeaking ? '3px solid' : undefined}
-      outlineColor={isSpeaking ? sage : undefined}
-    >
-      {hasVideoTrack && !cameraOff ? (
-        <video ref={videoRef} autoPlay playsInline muted={muted} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-      ) : (
-        <Box w="full" h="full" display="flex" alignItems="center" justifyContent="center">
-          <Circle size="56px" bg={roseDeep} color="white" fontFamily={serif} fontWeight="700" fontSize="lg">
-            {label.charAt(0).toUpperCase()}
-          </Circle>
-        </Box>
-      )}
-      <Text position="absolute" bottom={1.5} left={2} fontSize="xs" color="white" bg="blackAlpha.600" px={2} py={0.5} borderRadius="md">
-        {label}
-      </Text>
-      {isSpeaking && (
-        <Badge position="absolute" top={1.5} right={1.5} bg={sageDeep} color="white" fontSize="9px" borderRadius="full" px={2}>
-          Speaking
-        </Badge>
-      )}
-    </Box>
+    <Text fontSize="xs" color={inkSoft} sx={{ fontVariantNumeric: 'tabular-nums' }}>
+      {m}:{String(s).padStart(2, '0')}
+    </Text>
   );
 };
 
@@ -86,22 +68,32 @@ const CallPanel = ({
   cameraEnabled,
   myUsername,
   myUserId,
-  isModerator,
   speakingMode,
   speakerTimeSec,
   currentSpeaker,
   currentSpeakerStartedAt,
   queue,
+  topic,
+  requireApproval,
+  autoMuteOnJoin,
+  isHost,
+  joinRequests,
+  callStartedAt,
   onToggleMic,
   onToggleCamera,
   onLeave,
   onRaiseHand,
   onLowerHand,
   onSkipSpeaker,
+  onUpdateSettings,
+  onAdmit,
+  onDeny,
+  onKick,
+  onForceMute,
 }: {
   isOpen: boolean;
   channelName: string;
-  status: 'idle' | 'connecting' | 'in-call' | 'error';
+  status: 'idle' | 'connecting' | 'pending-approval' | 'in-call' | 'error';
   error: string | null;
   localStream: MediaStream | null;
   remoteParticipants: RemoteParticipant[];
@@ -109,158 +101,231 @@ const CallPanel = ({
   cameraEnabled: boolean;
   myUsername: string;
   myUserId?: string;
-  isModerator: boolean;
   speakingMode: SpeakingMode;
   speakerTimeSec: number | null;
   currentSpeaker: QueuedSpeaker | null;
   currentSpeakerStartedAt: string | null;
   queue: QueuedSpeaker[];
+  topic: string | null;
+  requireApproval: boolean;
+  autoMuteOnJoin: boolean;
+  isHost: boolean;
+  joinRequests: PendingJoinRequest[];
+  callStartedAt: string | null;
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onLeave: () => void;
   onRaiseHand: () => void;
   onLowerHand: () => void;
   onSkipSpeaker: () => void;
+  onUpdateSettings: (patch: { speakingMode: SpeakingMode; speakerTimeSec?: number; topic: string; requireApproval: boolean; autoMuteOnJoin: boolean }) => void;
+  onAdmit: (userId: string) => void;
+  onDeny: (userId: string) => void;
+  onKick: (userId: string) => void;
+  onForceMute: (userId: string) => void;
 }) => {
   const structured = speakingMode === 'STRUCTURED';
   const isSpeaking = structured && currentSpeaker?.id === myUserId;
   const inQueue = structured && queue.some((q) => q.id === myUserId);
   const handActive = isSpeaking || inQueue;
 
+  const sidebarParticipants: SidebarParticipant[] = [
+    { userId: myUserId || 'me', username: `${myUsername} (you)`, micEnabled, cameraEnabled, isSpeaking: Boolean(isSpeaking) },
+    ...remoteParticipants.map((p) => ({
+      userId: p.userId,
+      username: p.username,
+      micEnabled: p.micEnabled,
+      cameraEnabled: p.cameraEnabled,
+      isSpeaking: structured && currentSpeaker?.id === p.userId,
+    })),
+  ];
+
   return (
-    <Modal isOpen={isOpen} onClose={onLeave} size="4xl" isCentered closeOnOverlayClick={false} closeOnEsc={false}>
+    <Modal isOpen={isOpen} onClose={onLeave} size="full" closeOnOverlayClick={false} closeOnEsc={false}>
       <ModalOverlay />
-      <ModalContent bg={card} borderRadius="xl" p={{ base: 4, md: 6 }}>
-        <Stack spacing={4}>
-          <HStack justify="space-between">
-            <HStack spacing={2}>
-              <Text fontFamily={serif} fontWeight="600" fontSize="lg" color={ink}>
-                Call in #{channelName}
+      <ModalContent bg={card} m={0} borderRadius={0}>
+        <Stack spacing={0} h="100vh" p={{ base: 3, md: 5 }}>
+          {status === 'pending-approval' ? (
+            <Stack flex={1} align="center" justify="center" spacing={4}>
+              <Spinner size="lg" color={sageDeep} thickness="3px" />
+              <Text fontFamily={serif} fontSize="lg" color={ink}>
+                Waiting for the host to let you in...
               </Text>
-              {structured && (
-                <Badge fontSize="9px" borderRadius="full" px={2} bg={sageTint} color={sageDeep}>
-                  Structured · {speakerTimeSec}s/speaker
-                </Badge>
+              {topic && (
+                <Text fontSize="sm" color={inkSoft}>
+                  {topic}
+                </Text>
               )}
-            </HStack>
-            <Text fontSize="xs" color={inkSoft}>
-              {remoteParticipants.length + 1} in call
-            </Text>
-          </HStack>
-
-          {status === 'connecting' && (
-            <Text fontSize="sm" color={inkSoft} textAlign="center" py={8}>
-              Connecting — check your browser's camera/mic permission prompt...
-            </Text>
-          )}
-
-          {error && (
-            <Alert status="error" borderRadius="lg" fontSize="sm">
-              <AlertIcon />
-              {error}
-            </Alert>
-          )}
-
-          {status === 'in-call' && structured && (
-            <Box bg="white" border="1px solid" borderColor={line} borderRadius="lg" px={3} py={2.5}>
-              <HStack justify="space-between" align="flex-start" spacing={3}>
-                <HStack spacing={2}>
-                  <Icon as={FiClock} color={inkSoft} />
-                  {currentSpeaker ? (
-                    <HStack spacing={2}>
-                      <Text fontSize="sm" color={ink}>
-                        <Text as="span" fontWeight="700">
-                          {currentSpeaker.id === myUserId ? 'You' : currentSpeaker.username}
-                        </Text>{' '}
-                        {currentSpeaker.id === myUserId ? 'are' : 'is'} speaking
-                      </Text>
-                      {currentSpeakerStartedAt && speakerTimeSec && <SpeakerTimer startedAt={currentSpeakerStartedAt} durationSec={speakerTimeSec} />}
-                    </HStack>
-                  ) : (
-                    <Text fontSize="sm" color={inkSoft}>
-                      No one is speaking — raise your hand to start.
+              <Button size="sm" variant="outline" borderColor={line} onClick={onLeave}>
+                Cancel
+              </Button>
+            </Stack>
+          ) : status === 'connecting' ? (
+            <Stack flex={1} align="center" justify="center" spacing={4}>
+              <Spinner size="lg" color={sageDeep} thickness="3px" />
+              <Text fontSize="sm" color={inkSoft} textAlign="center">
+                Connecting — check your browser's camera/mic permission prompt...
+              </Text>
+            </Stack>
+          ) : status === 'error' ? (
+            <Stack flex={1} align="center" justify="center" spacing={4} px={8}>
+              <Alert status="error" borderRadius="lg" fontSize="sm" maxW="480px">
+                <AlertIcon />
+                {error}
+              </Alert>
+              <Button size="sm" variant="outline" borderColor={line} onClick={onLeave}>
+                Close
+              </Button>
+            </Stack>
+          ) : (
+            <>
+              <HStack justify="space-between" pb={3} flexShrink={0}>
+                <HStack spacing={3} minW={0}>
+                  <Text fontFamily={serif} fontWeight="600" fontSize="xl" color={ink} noOfLines={1}>
+                    Call in #{channelName}
+                  </Text>
+                  {topic && (
+                    <Text fontSize="sm" color={inkSoft} noOfLines={1}>
+                      · {topic}
                     </Text>
                   )}
+                  {structured && (
+                    <Text fontSize="9px" fontWeight="700" bg={sageTint} color={sageDeep} borderRadius="full" px={2} py={0.5} whiteSpace="nowrap">
+                      STRUCTURED · {speakerTimeSec}S/SPEAKER
+                    </Text>
+                  )}
+                  {callStartedAt && <CallDuration startedAt={callStartedAt} />}
                 </HStack>
-                {isModerator && currentSpeaker && (
-                  <IconButton aria-label="Skip to next speaker" icon={<Icon as={FiSkipForward} />} size="xs" variant="ghost" onClick={onSkipSpeaker} />
-                )}
-              </HStack>
-              {queue.length > 0 && (
-                <HStack mt={2} spacing={2}>
+                <HStack spacing={2} flexShrink={0}>
                   <Text fontSize="xs" color={inkSoft}>
-                    Up next:
+                    {remoteParticipants.length + 1} in call
                   </Text>
-                  <AvatarGroup size="xs" max={6}>
-                    {queue.map((q) => (
-                      <Avatar key={q.id} name={q.username} />
-                    ))}
-                  </AvatarGroup>
+                  {isHost && (
+                    <CallSettingsPopover
+                      speakingMode={speakingMode}
+                      speakerTimeSec={speakerTimeSec}
+                      topic={topic}
+                      requireApproval={requireApproval}
+                      autoMuteOnJoin={autoMuteOnJoin}
+                      onSave={onUpdateSettings}
+                    />
+                  )}
                 </HStack>
+              </HStack>
+
+              {structured && (
+                <Box bg="white" border="1px solid" borderColor={line} borderRadius="lg" px={3} py={2.5} mb={3} flexShrink={0}>
+                  <HStack justify="space-between" align="flex-start" spacing={3}>
+                    <HStack spacing={2}>
+                      <Icon as={FiClock} color={inkSoft} />
+                      {currentSpeaker ? (
+                        <HStack spacing={2}>
+                          <Text fontSize="sm" color={ink}>
+                            <Text as="span" fontWeight="700">
+                              {currentSpeaker.id === myUserId ? 'You' : currentSpeaker.username}
+                            </Text>{' '}
+                            {currentSpeaker.id === myUserId ? 'are' : 'is'} speaking
+                          </Text>
+                          {currentSpeakerStartedAt && speakerTimeSec && <SpeakerTimer startedAt={currentSpeakerStartedAt} durationSec={speakerTimeSec} />}
+                        </HStack>
+                      ) : (
+                        <Text fontSize="sm" color={inkSoft}>
+                          No one is speaking — raise your hand to start.
+                        </Text>
+                      )}
+                    </HStack>
+                    {isHost && currentSpeaker && (
+                      <IconButton aria-label="Skip to next speaker" icon={<Icon as={FiSkipForward} />} size="xs" variant="ghost" onClick={onSkipSpeaker} />
+                    )}
+                  </HStack>
+                </Box>
               )}
-            </Box>
-          )}
 
-          {status === 'in-call' && (
-            <Grid templateColumns={{ base: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }} gap={3}>
-              <VideoTile stream={localStream} label={`${myUsername} (you)`} muted cameraOff={!cameraEnabled} isSpeaking={isSpeaking} />
-              {remoteParticipants.map((p) => (
-                <VideoTile key={p.userId} stream={p.stream} label={p.username} isSpeaking={structured && currentSpeaker?.id === p.userId} />
-              ))}
-            </Grid>
-          )}
+              <HStack flex={1} spacing={4} align="stretch" minH={0}>
+                <Box flex={1} overflowY="auto">
+                  <Grid templateColumns={{ base: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' }} gap={3}>
+                    <VideoTile stream={localStream} label={`${myUsername} (you)`} muted cameraOff={!cameraEnabled} micOff={!micEnabled} isSpeaking={isSpeaking} />
+                    {remoteParticipants.map((p) => (
+                      <VideoTile
+                        key={p.userId}
+                        stream={p.stream}
+                        label={p.username}
+                        cameraOff={!p.cameraEnabled}
+                        micOff={!p.micEnabled}
+                        isSpeaking={structured && currentSpeaker?.id === p.userId}
+                        canManage={isHost}
+                        onKick={() => onKick(p.userId)}
+                        onForceMute={() => onForceMute(p.userId)}
+                      />
+                    ))}
+                  </Grid>
+                </Box>
 
-          <HStack justify="center" spacing={3} pt={2} borderTop="1px solid" borderColor={line}>
-            {structured ? (
-              <Button
-                leftIcon={<Icon as={PiHandPalmFill} />}
-                borderRadius="full"
-                size="lg"
-                px={5}
-                bg={handActive ? sage : 'white'}
-                color={handActive ? 'white' : ink}
-                border="1px solid"
-                borderColor={handActive ? sage : line}
-                _hover={{ bg: handActive ? sageDeep : card }}
-                onClick={handActive ? onLowerHand : onRaiseHand}
-              >
-                {isSpeaking ? 'Done speaking' : inQueue ? 'Lower hand' : 'Raise hand'}
-              </Button>
-            ) : (
-              <IconButton
-                aria-label={micEnabled ? 'Mute microphone' : 'Unmute microphone'}
-                icon={<Icon as={micEnabled ? FiMic : FiMicOff} />}
-                borderRadius="full"
-                size="lg"
-                bg={micEnabled ? 'white' : rose}
-                color={micEnabled ? ink : 'white'}
-                border="1px solid"
-                borderColor={line}
-                onClick={onToggleMic}
-              />
-            )}
-            <IconButton
-              aria-label={cameraEnabled ? 'Turn camera off' : 'Turn camera on'}
-              icon={<Icon as={cameraEnabled ? FiVideo : FiVideoOff} />}
-              borderRadius="full"
-              size="lg"
-              bg={cameraEnabled ? 'white' : rose}
-              color={cameraEnabled ? ink : 'white'}
-              border="1px solid"
-              borderColor={line}
-              onClick={onToggleCamera}
-            />
-            <IconButton
-              aria-label="Leave call"
-              icon={<Icon as={FiPhoneOff} />}
-              borderRadius="full"
-              size="lg"
-              bg={rose}
-              color="white"
-              _hover={{ bg: roseDeep }}
-              onClick={onLeave}
-            />
-          </HStack>
+                <CallSidebar
+                  participants={sidebarParticipants}
+                  myUserId={myUserId}
+                  isHost={isHost}
+                  joinRequests={joinRequests}
+                  onAdmit={onAdmit}
+                  onDeny={onDeny}
+                  onKick={onKick}
+                  onForceMute={onForceMute}
+                />
+              </HStack>
+
+              <HStack justify="center" spacing={3} pt={3} mt={2} borderTop="1px solid" borderColor={line} flexShrink={0}>
+                {structured ? (
+                  <Button
+                    leftIcon={<Icon as={PiHandPalmFill} />}
+                    borderRadius="full"
+                    size="lg"
+                    px={5}
+                    bg={handActive ? sage : 'white'}
+                    color={handActive ? 'white' : ink}
+                    border="1px solid"
+                    borderColor={handActive ? sage : line}
+                    _hover={{ bg: handActive ? sageDeep : card }}
+                    onClick={handActive ? onLowerHand : onRaiseHand}
+                  >
+                    {isSpeaking ? 'Done speaking' : inQueue ? 'Lower hand' : 'Raise hand'}
+                  </Button>
+                ) : (
+                  <IconButton
+                    aria-label={micEnabled ? 'Mute microphone' : 'Unmute microphone'}
+                    icon={<Icon as={micEnabled ? FiMic : FiMicOff} />}
+                    borderRadius="full"
+                    size="lg"
+                    bg={micEnabled ? 'white' : rose}
+                    color={micEnabled ? ink : 'white'}
+                    border="1px solid"
+                    borderColor={line}
+                    onClick={onToggleMic}
+                  />
+                )}
+                <IconButton
+                  aria-label={cameraEnabled ? 'Turn camera off' : 'Turn camera on'}
+                  icon={<Icon as={cameraEnabled ? FiVideo : FiVideoOff} />}
+                  borderRadius="full"
+                  size="lg"
+                  bg={cameraEnabled ? 'white' : rose}
+                  color={cameraEnabled ? ink : 'white'}
+                  border="1px solid"
+                  borderColor={line}
+                  onClick={onToggleCamera}
+                />
+                <IconButton
+                  aria-label="Leave call"
+                  icon={<Icon as={FiPhoneOff} />}
+                  borderRadius="full"
+                  size="lg"
+                  bg={rose}
+                  color="white"
+                  _hover={{ bg: roseDeep }}
+                  onClick={onLeave}
+                />
+              </HStack>
+            </>
+          )}
         </Stack>
       </ModalContent>
     </Modal>

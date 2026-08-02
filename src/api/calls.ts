@@ -14,30 +14,56 @@ export interface QueuedSpeaker {
   username: string;
 }
 
-export interface SpeakingState {
+export interface PendingJoinRequest {
+  userId: string;
+  username: string;
+}
+
+export interface CallSettingsState {
   speakingMode: SpeakingMode;
   speakerTimeSec: number | null;
   currentSpeaker: QueuedSpeaker | null;
   currentSpeakerStartedAt: string | null;
   queue: QueuedSpeaker[];
+  requireApproval: boolean;
+  autoMuteOnJoin: boolean;
+  topic: string | null;
+  startedBy: string;
+  startedAt: string;
+  /** Whether the caller is this call's host (its starter, or a space owner/moderator). */
+  isHost: boolean;
+  /** Populated only when the caller is the call's host. */
+  joinRequests: PendingJoinRequest[];
 }
 
-export interface ActiveCall extends SpeakingState {
+export interface ActiveCall extends CallSettingsState {
   id: string;
   channelId: string;
   startedAt: string;
   participants: CallParticipant[];
 }
 
-export interface CallState extends SpeakingState {
+export interface CallState extends CallSettingsState {
   participants: CallParticipant[];
 }
+
+export interface StartCallSettings {
+  speakingMode: SpeakingMode;
+  speakerTimeSec?: number;
+  topic?: string;
+  requireApproval?: boolean;
+  autoMuteOnJoin?: boolean;
+}
+
+export type JoinCallResult =
+  | ({ pending?: false; callSessionId: string; participants: CallParticipant[] } & CallSettingsState)
+  | { pending: true; callSessionId: string; topic: string | null; speakingMode: SpeakingMode };
 
 export interface CallSignal {
   id: string;
   fromUserId: string;
   toUserId: string | null;
-  type: 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE' | 'JOIN' | 'LEAVE';
+  type: 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE' | 'JOIN' | 'LEAVE' | 'KICKED' | 'MEDIA_STATE' | 'FORCE_MUTE';
   payload: string;
   createdAt: string;
 }
@@ -50,10 +76,7 @@ export async function fetchActiveCall(channelId: string): Promise<ActiveCall | n
   return unwrap(await client.get(`/calls/channel/${channelId}`));
 }
 
-export async function joinCall(
-  channelId: string,
-  settings?: { speakingMode: SpeakingMode; speakerTimeSec?: number },
-): Promise<{ callSessionId: string; participants: CallParticipant[] } & SpeakingState> {
+export async function joinCall(channelId: string, settings?: StartCallSettings): Promise<JoinCallResult> {
   return unwrap(await client.post(`/calls/channel/${channelId}/join`, settings || {}));
 }
 
@@ -65,19 +88,43 @@ export async function fetchCallState(callSessionId: string): Promise<CallState> 
   return unwrap(await client.get(`/calls/${callSessionId}/state`));
 }
 
-export async function raiseHand(callSessionId: string): Promise<SpeakingState> {
+export async function raiseHand(callSessionId: string): Promise<CallSettingsState> {
   return unwrap(await client.post(`/calls/${callSessionId}/raise-hand`));
 }
 
-export async function lowerHand(callSessionId: string): Promise<SpeakingState> {
+export async function lowerHand(callSessionId: string): Promise<CallSettingsState> {
   return unwrap(await client.post(`/calls/${callSessionId}/lower-hand`));
 }
 
-export async function advanceSpeaker(callSessionId: string): Promise<SpeakingState> {
+export async function advanceSpeaker(callSessionId: string): Promise<CallSettingsState> {
   return unwrap(await client.post(`/calls/${callSessionId}/advance-speaker`));
 }
 
-export async function sendCallSignal(callSessionId: string, type: 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE', toUserId: string, payload: unknown) {
+export async function fetchJoinRequestStatus(callSessionId: string): Promise<{ status: 'PENDING' | 'APPROVED' | 'DENIED' | null }> {
+  return unwrap(await client.get(`/calls/${callSessionId}/join-request-status`));
+}
+
+export async function resolveJoinRequest(callSessionId: string, requesterId: string, decision: 'APPROVE' | 'DENY') {
+  return unwrap(await client.post(`/calls/${callSessionId}/join-requests/${requesterId}/resolve`, { decision }));
+}
+
+export async function updateCallSettings(
+  callSessionId: string,
+  patch: Partial<{ speakingMode: SpeakingMode; speakerTimeSec: number; topic: string; requireApproval: boolean; autoMuteOnJoin: boolean }>,
+): Promise<CallSettingsState> {
+  return unwrap(await client.patch(`/calls/${callSessionId}/settings`, patch));
+}
+
+export async function removeParticipant(callSessionId: string, targetUserId: string): Promise<CallSettingsState> {
+  return unwrap(await client.post(`/calls/${callSessionId}/participants/${targetUserId}/remove`));
+}
+
+export async function sendCallSignal(
+  callSessionId: string,
+  type: 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE' | 'MEDIA_STATE' | 'FORCE_MUTE',
+  toUserId: string | null,
+  payload: unknown,
+) {
   return unwrap(await client.post(`/calls/${callSessionId}/signal`, { type, toUserId, payload }));
 }
 
