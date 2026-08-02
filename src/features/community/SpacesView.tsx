@@ -84,6 +84,8 @@ import {
   messageMediaUrl,
   requestToJoinDebate,
   fetchDebateRequests,
+  fetchApprovedDebateParticipants,
+  revokeDebateApproval,
   resolveDebateRequest,
   fetchMyDebateStatus,
   SpaceSummary,
@@ -404,6 +406,7 @@ const ChannelThread = ({
   const [sending, setSending] = useState(false);
   const [debateStatus, setDebateStatus] = useState<string | null>(null);
   const [pendingRequests, setPendingRequests] = useState<DebateRequest[]>([]);
+  const [approvedParticipants, setApprovedParticipants] = useState<DebateRequest[]>([]);
   const [confirmDeleteMessageId, setConfirmDeleteMessageId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recorder = useAudioRecorder();
@@ -421,8 +424,12 @@ const ChannelThread = ({
         const status = await fetchMyDebateStatus(channel.id).catch(() => null);
         setDebateStatus(status);
         if (isModerator) {
-          const requests = await fetchDebateRequests(channel.id).catch(() => []);
+          const [requests, participants] = await Promise.all([
+            fetchDebateRequests(channel.id).catch(() => []),
+            fetchApprovedDebateParticipants(channel.id).catch(() => []),
+          ]);
           setPendingRequests(requests);
+          setApprovedParticipants(participants);
         }
       }
     } catch (err: any) {
@@ -511,6 +518,12 @@ const ChannelThread = ({
   const resolveRequest = async (requestId: string, approve: boolean) => {
     await resolveDebateRequest(requestId, approve).catch(() => undefined);
     setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
+    if (approve) await load();
+  };
+
+  const revokeApproval = async (requestId: string) => {
+    await revokeDebateApproval(requestId).catch(() => undefined);
+    setApprovedParticipants((prev) => prev.filter((r) => r.id !== requestId));
   };
 
   return (
@@ -548,6 +561,24 @@ const ChannelThread = ({
                   <IconButton aria-label="Approve" icon={<FiCheck />} size="xs" bg={sage} color="white" onClick={() => resolveRequest(r.id, true)} />
                   <IconButton aria-label="Decline" icon={<FiX />} size="xs" bg={rose} color="white" onClick={() => resolveRequest(r.id, false)} />
                 </HStack>
+              </HStack>
+            ))}
+          </Stack>
+        </Box>
+      )}
+
+      {isModerator && approvedParticipants.length > 0 && (
+        <Box bg={sageTint} border="1px solid" borderColor={sage} borderRadius="lg" p={3}>
+          <Text fontSize="xs" fontWeight="700" color={sageDeep} mb={2}>
+            {approvedParticipants.length} approved to participate
+          </Text>
+          <Stack spacing={1.5}>
+            {approvedParticipants.map((r) => (
+              <HStack key={r.id} justify="space-between">
+                <Text fontSize="sm">@{r.user.username}</Text>
+                <Button size="xs" variant="outline" borderColor={line} color={inkSoft} onClick={() => revokeApproval(r.id)}>
+                  Revoke
+                </Button>
               </HStack>
             ))}
           </Stack>

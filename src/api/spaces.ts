@@ -160,3 +160,11 @@ export async function fetchMyDebateStatus(channelId: string): Promise<string | n
 export async function resolveDebateRequest(requestId: string, approve: boolean) {
   return unwrap(await client.post(`/spaces/debate/requests/${requestId}/resolve`, { approve }));
 }
+
+export async function fetchApprovedDebateParticipants(channelId: string): Promise<DebateRequest[]> {
+  return unwrap(await client.get(`/spaces/channels/${channelId}/debate/participants`));
+}
+
+export async function revokeDebateApproval(requestId: string) {
+  return unwrap(await client.post(`/spaces/debate/requests/${requestId}/revoke`));
+}
