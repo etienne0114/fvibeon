@@ -38,11 +38,12 @@ import {
   ChannelMessage,
   DebateRequest,
 } from '../../api/spaces';
-import { fetchActiveCall, ActiveCall } from '../../api/calls';
+import { fetchActiveCall, ActiveCall, SpeakingMode } from '../../api/calls';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
 import { useWebRTCCall } from '../../hooks/useWebRTCCall';
 import { useMe } from '../../hooks/useMe';
 import CallPanel from './CallPanel';
+import MeetingSettingsModal from './MeetingSettingsModal';
 import { blobToBase64, MAX_UPLOAD_BYTES, ConfirmModal } from './shared';
 import { ink, inkSoft, rose, roseDeep, card, line, serif, sage, sageDeep, sageTint, amber, amberDeep, amberTint } from '../../theme/brand';
 
@@ -350,6 +351,7 @@ export const ChannelThread = ({
   const [openThreadMessageId, setOpenThreadMessageId] = useState<string | null>(null);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [showCallPanel, setShowCallPanel] = useState(false);
+  const [showCallSettings, setShowCallSettings] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recorder = useAudioRecorder();
   const toast = useToast();
@@ -369,9 +371,21 @@ export const ChannelThread = ({
     };
   }, [channel.id]);
 
-  const startOrJoinCall = async () => {
+  // Starting a fresh call asks how it should run (open floor vs. structured turns) first;
+  // joining one already in progress just inherits whatever the starter picked.
+  const startOrJoinCall = () => {
+    if (activeCall) {
+      setShowCallPanel(true);
+      call.join(channel.id, me?.id || '', activeCall.participants);
+    } else {
+      setShowCallSettings(true);
+    }
+  };
+
+  const confirmStartCall = async (settings: { speakingMode: SpeakingMode; speakerTimeSec?: number }) => {
+    setShowCallSettings(false);
     setShowCallPanel(true);
-    await call.join(channel.id, activeCall?.participants);
+    await call.join(channel.id, me?.id || '', undefined, settings);
   };
 
   const leaveCallPanel = async () => {
@@ -664,6 +678,13 @@ export const ChannelThread = ({
         </HStack>
       )}
 
+      <MeetingSettingsModal
+        isOpen={showCallSettings}
+        channelName={channel.name}
+        onClose={() => setShowCallSettings(false)}
+        onStart={confirmStartCall}
+      />
+
       <CallPanel
         isOpen={showCallPanel}
         channelName={channel.name}
@@ -674,9 +695,19 @@ export const ChannelThread = ({
         micEnabled={call.micEnabled}
         cameraEnabled={call.cameraEnabled}
         myUsername={me?.username || 'You'}
+        myUserId={me?.id}
+        isModerator={isModerator}
+        speakingMode={call.speakingMode}
+        speakerTimeSec={call.speakerTimeSec}
+        currentSpeaker={call.currentSpeaker}
+        currentSpeakerStartedAt={call.currentSpeakerStartedAt}
+        queue={call.queue}
         onToggleMic={call.toggleMic}
         onToggleCamera={call.toggleCamera}
         onLeave={leaveCallPanel}
+        onRaiseHand={call.raiseHand}
+        onLowerHand={call.lowerHand}
+        onSkipSpeaker={call.skipSpeaker}
       />
     </Stack>
   );

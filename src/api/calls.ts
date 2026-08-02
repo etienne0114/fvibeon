@@ -1,5 +1,7 @@
 import client from './client';
 
+export type SpeakingMode = 'OPEN' | 'STRUCTURED';
+
 export interface CallParticipant {
   id: string;
   userId: string;
@@ -7,10 +9,27 @@ export interface CallParticipant {
   user: { id: string; username: string };
 }
 
-export interface ActiveCall {
+export interface QueuedSpeaker {
+  id: string;
+  username: string;
+}
+
+export interface SpeakingState {
+  speakingMode: SpeakingMode;
+  speakerTimeSec: number | null;
+  currentSpeaker: QueuedSpeaker | null;
+  currentSpeakerStartedAt: string | null;
+  queue: QueuedSpeaker[];
+}
+
+export interface ActiveCall extends SpeakingState {
   id: string;
   channelId: string;
   startedAt: string;
+  participants: CallParticipant[];
+}
+
+export interface CallState extends SpeakingState {
   participants: CallParticipant[];
 }
 
@@ -31,12 +50,31 @@ export async function fetchActiveCall(channelId: string): Promise<ActiveCall | n
   return unwrap(await client.get(`/calls/channel/${channelId}`));
 }
 
-export async function joinCall(channelId: string): Promise<{ callSessionId: string; participants: CallParticipant[] }> {
-  return unwrap(await client.post(`/calls/channel/${channelId}/join`));
+export async function joinCall(
+  channelId: string,
+  settings?: { speakingMode: SpeakingMode; speakerTimeSec?: number },
+): Promise<{ callSessionId: string; participants: CallParticipant[] } & SpeakingState> {
+  return unwrap(await client.post(`/calls/channel/${channelId}/join`, settings || {}));
 }
 
 export async function leaveCall(callSessionId: string) {
   return unwrap(await client.post(`/calls/${callSessionId}/leave`));
+}
+
+export async function fetchCallState(callSessionId: string): Promise<CallState> {
+  return unwrap(await client.get(`/calls/${callSessionId}/state`));
+}
+
+export async function raiseHand(callSessionId: string): Promise<SpeakingState> {
+  return unwrap(await client.post(`/calls/${callSessionId}/raise-hand`));
+}
+
+export async function lowerHand(callSessionId: string): Promise<SpeakingState> {
+  return unwrap(await client.post(`/calls/${callSessionId}/lower-hand`));
+}
+
+export async function advanceSpeaker(callSessionId: string): Promise<SpeakingState> {
+  return unwrap(await client.post(`/calls/${callSessionId}/advance-speaker`));
 }
 
 export async function sendCallSignal(callSessionId: string, type: 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE', toUserId: string, payload: unknown) {
