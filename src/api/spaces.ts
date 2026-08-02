@@ -37,6 +37,7 @@ export interface ChannelMessage {
   mimeType: string | null;
   createdAt: string;
   user: { id: string; username: string };
+  replyCount?: number;
 }
 
 export interface DebateRequest {
@@ -127,16 +128,20 @@ export async function fetchMessages(channelId: string): Promise<{ channel: Chann
   return unwrap(await client.get(`/spaces/channels/${channelId}/messages`));
 }
 
-export async function postTextMessage(channelId: string, text: string) {
-  return unwrap(await client.post(`/spaces/channels/${channelId}/messages`, { type: 'TEXT', text }));
+export async function postTextMessage(channelId: string, text: string, parentMessageId?: string) {
+  return unwrap(await client.post(`/spaces/channels/${channelId}/messages`, { type: 'TEXT', text, parentMessageId }));
 }
 
-export async function postMediaMessage(channelId: string, type: 'VOICE' | 'IMAGE', media: string, mimeType: string) {
-  return unwrap(await client.post(`/spaces/channels/${channelId}/messages`, { type, media, mimeType }));
+export async function postMediaMessage(channelId: string, type: 'VOICE' | 'IMAGE', media: string, mimeType: string, parentMessageId?: string) {
+  return unwrap(await client.post(`/spaces/channels/${channelId}/messages`, { type, media, mimeType, parentMessageId }));
 }
 
 export async function deleteMessage(channelId: string, messageId: string) {
   return unwrap(await client.delete(`/spaces/channels/${channelId}/messages/${messageId}`));
+}
+
+export async function fetchReplies(messageId: string): Promise<{ root: ChannelMessage; replies: ChannelMessage[] }> {
+  return unwrap(await client.get(`/spaces/messages/${messageId}/replies`));
 }
 
 export function messageMediaUrl(messageId: string) {

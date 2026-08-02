@@ -5,6 +5,12 @@ import {
   Badge,
   Box,
   Button,
+  Drawer,
+  DrawerBody,
+  DrawerCloseButton,
+  DrawerContent,
+  DrawerHeader,
+  DrawerOverlay,
   Flex,
   FormControl,
   FormLabel,
@@ -59,6 +65,7 @@ import {
   FiLogOut,
   FiShield,
   FiUserX,
+  FiCornerUpLeft,
 } from 'react-icons/fi';
 import {
   fetchSpaces,
@@ -81,6 +88,7 @@ import {
   postTextMessage,
   postMediaMessage,
   deleteMessage,
+  fetchReplies,
   messageMediaUrl,
   requestToJoinDebate,
   fetchDebateRequests,
@@ -340,10 +348,13 @@ const MessageBubble = ({
   message,
   canDelete,
   onDelete,
+  onReply,
 }: {
   message: ChannelMessage;
   canDelete: boolean;
   onDelete: () => void;
+  /** Omitted inside the thread panel itself — replies don't get their own sub-threads. */
+  onReply?: () => void;
 }) => (
   <Stack spacing={0.5} align="flex-start" role="group" w="full">
     <HStack spacing={2} w="full" justify="space-between">
@@ -355,18 +366,14 @@ const MessageBubble = ({
           {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </Text>
       </HStack>
-      {canDelete && (
-        <IconButton
-          aria-label="Delete message"
-          icon={<FiTrash2 />}
-          size="xs"
-          variant="ghost"
-          color={inkSoft}
-          opacity={0}
-          _groupHover={{ opacity: 1 }}
-          onClick={onDelete}
-        />
-      )}
+      <HStack spacing={0} opacity={0} _groupHover={{ opacity: 1 }}>
+        {onReply && (
+          <IconButton aria-label="Reply in thread" icon={<FiCornerUpLeft />} size="xs" variant="ghost" color={inkSoft} onClick={onReply} />
+        )}
+        {canDelete && (
+          <IconButton aria-label="Delete message" icon={<FiTrash2 />} size="xs" variant="ghost" color={inkSoft} onClick={onDelete} />
+        )}
+      </HStack>
     </HStack>
     {message.type === 'TEXT' && (
       <Box bg={card} borderRadius="lg" px={3} py={2} maxW="80%">
@@ -385,8 +392,238 @@ const MessageBubble = ({
         <img src={messageMediaUrl(message.id)} alt="Shared" style={{ maxWidth: '100%', display: 'block' }} />
       </Box>
     )}
+    {onReply && Boolean(message.replyCount) && (
+      <HStack as="button" spacing={1.5} mt={0.5} onClick={onReply} color={roseDeep}>
+        <Icon as={FiCornerUpLeft} boxSize={3} />
+        <Text fontSize="xs" fontWeight="700">
+          {message.replyCount} {message.replyCount === 1 ? 'reply' : 'replies'}
+        </Text>
+      </HStack>
+    )}
   </Stack>
 );
+
+/* ---------------- Thread panel — a real sidebar/drawer, not an inline
+   "usual chat" expansion. Opens over the channel when a message's reply
+   count (or its Reply action) is clicked. ---------------- */
+const ThreadPanel = ({
+  isOpen,
+  messageId,
+  channelId,
+  isModerator,
+  onClose,
+  onRepliesChanged,
+}: {
+  isOpen: boolean;
+  messageId: string | null;
+  channelId: string;
+  isModerator: boolean;
+  onClose: () => void;
+  onRepliesChanged: () => void;
+}) => {
+  const [root, setRoot] = useState<ChannelMessage | null>(null);
+  const [replies, setReplies] = useState<ChannelMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recorder = useAudioRecorder();
+  const toast = useToast();
+  const { user: me } = useMe();
+
+  const load = useCallback(async () => {
+    if (!messageId) return;
+    try {
+      setLoading(true);
+      const result = await fetchReplies(messageId);
+      setRoot(result.root);
+      setReplies(result.replies);
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not load thread', status: 'error', duration: 3000, position: 'top' });
+    } finally {
+      setLoading(false);
+    }
+  }, [messageId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (isOpen && messageId) {
+      setText('');
+      load();
+    }
+  }, [isOpen, messageId, load]);
+
+  const sendReply = async () => {
+    if (!text.trim() || !messageId) return;
+    try {
+      setSending(true);
+      await postTextMessage(channelId, text, messageId);
+      setText('');
+      await load();
+      onRepliesChanged();
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not send reply', status: 'error', duration: 3000, position: 'top' });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const toggleVoiceReply = async () => {
+    if (recorder.isRecording) {
+      recorder.stopRecording();
+      return;
+    }
+    recorder.clearRecording();
+    await recorder.startRecording().catch(() => undefined);
+    window.setTimeout(() => recorder.stopRecording(), 15000);
+  };
+
+  useEffect(() => {
+    if (!recorder.audioBlob || !messageId) return;
+    (async () => {
+      try {
+        setSending(true);
+        const base64 = await blobToBase64(recorder.audioBlob!);
+        await postMediaMessage(channelId, 'VOICE', base64, recorder.audioBlob!.type, messageId);
+        recorder.clearRecording();
+        await load();
+        onRepliesChanged();
+      } catch (err: any) {
+        toast({ title: err?.response?.data?.error || 'Could not send voice reply', status: 'error', duration: 3000, position: 'top' });
+      } finally {
+        setSending(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recorder.audioBlob]);
+
+  const handleImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !messageId) return;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast({ title: 'Image is too large — keep it small', status: 'error', duration: 3000, position: 'top' });
+      return;
+    }
+    try {
+      setSending(true);
+      const base64 = await blobToBase64(file);
+      await postMediaMessage(channelId, 'IMAGE', base64, file.type, messageId);
+      await load();
+      onRepliesChanged();
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not send image', status: 'error', duration: 3000, position: 'top' });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <>
+      <Drawer isOpen={isOpen} placement="right" onClose={onClose} size="sm">
+        <DrawerOverlay />
+        <DrawerContent>
+          <DrawerCloseButton />
+          <DrawerHeader borderBottom="1px solid" borderColor={line} fontFamily={serif} fontSize="lg">
+            Thread
+          </DrawerHeader>
+          <DrawerBody display="flex" flexDirection="column" p={4}>
+            {loading ? (
+              <Stack spacing={3}>
+                <Skeleton h="60px" borderRadius="lg" />
+                <Skeleton h="40px" borderRadius="lg" />
+              </Stack>
+            ) : !root ? (
+              <Text color={inkSoft}>Message not found.</Text>
+            ) : (
+              <>
+                <Box pb={3} mb={3} borderBottom="1px solid" borderColor={line}>
+                  <MessageBubble message={root} canDelete={false} onDelete={() => {}} />
+                </Box>
+                <Text fontSize="xs" fontWeight="700" color={inkSoft} mb={2}>
+                  {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
+                </Text>
+                <Stack spacing={3} flex={1} overflowY="auto" mb={3} minH="120px">
+                  {replies.length === 0 ? (
+                    <Text fontSize="sm" color={inkSoft} textAlign="center" mt={4}>
+                      No replies yet — start the thread.
+                    </Text>
+                  ) : (
+                    replies.map((r) => (
+                      <MessageBubble
+                        key={r.id}
+                        message={r}
+                        canDelete={r.user.id === me?.id || isModerator}
+                        onDelete={() => setConfirmDeleteId(r.id)}
+                      />
+                    ))
+                  )}
+                </Stack>
+                <HStack>
+                  <Input
+                    placeholder="Reply..."
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && sendReply()}
+                    borderColor={line}
+                    size="sm"
+                  />
+                  <input type="file" accept="image/*" ref={fileInputRef} style={{ display: 'none' }} onChange={handleImagePick} />
+                  <IconButton
+                    aria-label="Attach image"
+                    icon={<FiImage />}
+                    size="sm"
+                    variant="outline"
+                    borderColor={line}
+                    onClick={() => fileInputRef.current?.click()}
+                  />
+                  <IconButton
+                    aria-label={recorder.isRecording ? 'Stop recording' : 'Record voice reply'}
+                    icon={<FiMic />}
+                    size="sm"
+                    variant="outline"
+                    borderColor={recorder.isRecording ? rose : line}
+                    color={recorder.isRecording ? rose : inkSoft}
+                    onClick={toggleVoiceReply}
+                  />
+                  <IconButton
+                    aria-label="Send reply"
+                    icon={<FiSend />}
+                    size="sm"
+                    bg={ink}
+                    color="white"
+                    _hover={{ bg: '#463039' }}
+                    isLoading={sending}
+                    isDisabled={!text.trim()}
+                    onClick={sendReply}
+                  />
+                </HStack>
+              </>
+            )}
+          </DrawerBody>
+        </DrawerContent>
+      </Drawer>
+      <ConfirmModal
+        isOpen={Boolean(confirmDeleteId)}
+        title="Delete this reply?"
+        body="This can't be undone."
+        confirmLabel="Delete"
+        onConfirm={async () => {
+          if (!confirmDeleteId) return;
+          try {
+            await deleteMessage(channelId, confirmDeleteId);
+            setConfirmDeleteId(null);
+            await load();
+            onRepliesChanged();
+          } catch (err: any) {
+            toast({ title: err?.response?.data?.error || 'Could not delete reply', status: 'error', duration: 3000, position: 'top' });
+          }
+        }}
+        onClose={() => setConfirmDeleteId(null)}
+      />
+    </>
+  );
+};
 
 /* ---------------- Channel thread (right column content) ---------------- */
 const ChannelThread = ({
@@ -408,6 +645,7 @@ const ChannelThread = ({
   const [pendingRequests, setPendingRequests] = useState<DebateRequest[]>([]);
   const [approvedParticipants, setApprovedParticipants] = useState<DebateRequest[]>([]);
   const [confirmDeleteMessageId, setConfirmDeleteMessageId] = useState<string | null>(null);
+  const [openThreadMessageId, setOpenThreadMessageId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recorder = useAudioRecorder();
   const toast = useToast();
@@ -602,10 +840,20 @@ const ChannelThread = ({
               message={m}
               canDelete={m.user.id === me?.id || isModerator}
               onDelete={() => setConfirmDeleteMessageId(m.id)}
+              onReply={() => setOpenThreadMessageId(m.id)}
             />
           ))
         )}
       </Stack>
+
+      <ThreadPanel
+        isOpen={Boolean(openThreadMessageId)}
+        messageId={openThreadMessageId}
+        channelId={channel.id}
+        isModerator={isModerator}
+        onClose={() => setOpenThreadMessageId(null)}
+        onRepliesChanged={load}
+      />
 
       <ConfirmModal
         isOpen={Boolean(confirmDeleteMessageId)}
