@@ -63,7 +63,7 @@ export interface CallSignal {
   id: string;
   fromUserId: string;
   toUserId: string | null;
-  type: 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE' | 'JOIN' | 'LEAVE' | 'KICKED' | 'MEDIA_STATE' | 'FORCE_MUTE';
+  type: 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE' | 'JOIN' | 'LEAVE' | 'KICKED' | 'MEDIA_STATE' | 'FORCE_MUTE' | 'SPEAKING' | 'REACTION';
   payload: string;
   createdAt: string;
 }
@@ -121,7 +121,7 @@ export async function removeParticipant(callSessionId: string, targetUserId: str
 
 export async function sendCallSignal(
   callSessionId: string,
-  type: 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE' | 'MEDIA_STATE' | 'FORCE_MUTE',
+  type: 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE' | 'MEDIA_STATE' | 'FORCE_MUTE' | 'SPEAKING' | 'REACTION',
   toUserId: string | null,
   payload: unknown,
 ) {

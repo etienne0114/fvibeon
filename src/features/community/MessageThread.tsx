@@ -696,6 +696,9 @@ export const ChannelThread = ({
         cameraEnabled={call.cameraEnabled}
         myUsername={me?.username || 'You'}
         myUserId={me?.id}
+        mySpeaking={call.mySpeaking}
+        focusedUserIds={call.focusedUserIds}
+        reactions={call.reactions}
         speakingMode={call.speakingMode}
         speakerTimeSec={call.speakerTimeSec}
         currentSpeaker={call.currentSpeaker}
@@ -718,6 +721,7 @@ export const ChannelThread = ({
         onDeny={call.denyJoinRequest}
         onKick={call.kickParticipant}
         onForceMute={call.forceMuteParticipant}
+        onSendReaction={call.sendReaction}
       />
     </Stack>
   );

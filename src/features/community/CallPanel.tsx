@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   Alert,
   AlertIcon,
+  Avatar,
   Box,
   Button,
   Grid,
@@ -17,12 +18,13 @@ import {
 } from '@chakra-ui/react';
 import { FiClock, FiMic, FiMicOff, FiPhoneOff, FiSkipForward, FiVideo, FiVideoOff } from 'react-icons/fi';
 import { PiHandPalmFill } from 'react-icons/pi';
-import { RemoteParticipant } from '../../hooks/useWebRTCCall';
+import { CallReaction, RemoteParticipant } from '../../hooks/useWebRTCCall';
 import { PendingJoinRequest, QueuedSpeaker, SpeakingMode } from '../../api/calls';
 import { ink, inkSoft, rose, roseDeep, sage, sageDeep, sageTint, card, line, serif } from '../../theme/brand';
 import VideoTile from './call/VideoTile';
 import CallSidebar, { SidebarParticipant } from './call/CallSidebar';
 import CallSettingsPopover from './call/CallSettingsPopover';
+import { ReactionOverlay, ReactionPicker } from './call/ReactionBar';
 
 /* Ticking "Ns left" label for the current speaker's turn — recomputed every second from
    the server-recorded start time, so it stays correct even if this tab was backgrounded. */
@@ -68,6 +70,9 @@ const CallPanel = ({
   cameraEnabled,
   myUsername,
   myUserId,
+  mySpeaking,
+  focusedUserIds,
+  reactions,
   speakingMode,
   speakerTimeSec,
   currentSpeaker,
@@ -90,6 +95,7 @@ const CallPanel = ({
   onDeny,
   onKick,
   onForceMute,
+  onSendReaction,
 }: {
   isOpen: boolean;
   channelName: string;
@@ -101,6 +107,9 @@ const CallPanel = ({
   cameraEnabled: boolean;
   myUsername: string;
   myUserId?: string;
+  mySpeaking: boolean;
+  focusedUserIds: Set<string>;
+  reactions: CallReaction[];
   speakingMode: SpeakingMode;
   speakerTimeSec: number | null;
   currentSpeaker: QueuedSpeaker | null;
@@ -123,20 +132,28 @@ const CallPanel = ({
   onDeny: (userId: string) => void;
   onKick: (userId: string) => void;
   onForceMute: (userId: string) => void;
+  onSendReaction: (emoji: string) => void;
 }) => {
   const structured = speakingMode === 'STRUCTURED';
-  const isSpeaking = structured && currentSpeaker?.id === myUserId;
+  const isSpeaking = structured ? currentSpeaker?.id === myUserId : mySpeaking;
   const inQueue = structured && queue.some((q) => q.id === myUserId);
-  const handActive = isSpeaking || inQueue;
+  const handActive = (structured && currentSpeaker?.id === myUserId) || inQueue;
+
+  const remoteIsSpeaking = (p: RemoteParticipant) => (structured ? currentSpeaker?.id === p.userId : p.speaking);
+  // Smart mesh limits: only a bounded "focus" set gets a real video tile — the size of
+  // this group is what keeps mesh bandwidth from growing with the square of the call size.
+  // Everyone else is still fully present on audio, just shown as a compact avatar chip.
+  const focusedParticipants = remoteParticipants.filter((p) => focusedUserIds.has(p.userId));
+  const audienceParticipants = remoteParticipants.filter((p) => !focusedUserIds.has(p.userId));
 
   const sidebarParticipants: SidebarParticipant[] = [
-    { userId: myUserId || 'me', username: `${myUsername} (you)`, micEnabled, cameraEnabled, isSpeaking: Boolean(isSpeaking) },
+    { userId: myUserId || 'me', username: `${myUsername} (you)`, micEnabled, cameraEnabled, isSpeaking },
     ...remoteParticipants.map((p) => ({
       userId: p.userId,
       username: p.username,
       micEnabled: p.micEnabled,
       cameraEnabled: p.cameraEnabled,
-      isSpeaking: structured && currentSpeaker?.id === p.userId,
+      isSpeaking: remoteIsSpeaking(p),
     })),
   ];
 
@@ -242,23 +259,55 @@ const CallPanel = ({
               )}
 
               <HStack flex={1} spacing={4} align="stretch" minH={0}>
-                <Box flex={1} overflowY="auto">
+                <Box flex={1} overflowY="auto" position="relative">
                   <Grid templateColumns={{ base: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' }} gap={3}>
                     <VideoTile stream={localStream} label={`${myUsername} (you)`} muted cameraOff={!cameraEnabled} micOff={!micEnabled} isSpeaking={isSpeaking} />
-                    {remoteParticipants.map((p) => (
+                    {focusedParticipants.map((p) => (
                       <VideoTile
                         key={p.userId}
                         stream={p.stream}
                         label={p.username}
-                        cameraOff={!p.cameraEnabled}
+                        cameraOff={!p.cameraEnabled || !p.hasVideo}
                         micOff={!p.micEnabled}
-                        isSpeaking={structured && currentSpeaker?.id === p.userId}
+                        isSpeaking={remoteIsSpeaking(p)}
                         canManage={isHost}
                         onKick={() => onKick(p.userId)}
                         onForceMute={() => onForceMute(p.userId)}
                       />
                     ))}
                   </Grid>
+
+                  {audienceParticipants.length > 0 && (
+                    <Box mt={4}>
+                      <Text fontSize="xs" fontWeight="700" color={inkSoft} textTransform="uppercase" letterSpacing="0.05em" mb={2}>
+                        Also here — audio only ({audienceParticipants.length})
+                      </Text>
+                      <HStack spacing={3} flexWrap="wrap">
+                        {audienceParticipants.map((p) => (
+                          <Stack key={p.userId} spacing={1} align="center" w="64px">
+                            <Box position="relative">
+                              <Avatar
+                                size="md"
+                                name={p.username}
+                                outline={remoteIsSpeaking(p) ? '3px solid' : undefined}
+                                outlineColor={remoteIsSpeaking(p) ? sage : undefined}
+                              />
+                              {!p.micEnabled && (
+                                <Box position="absolute" bottom={0} right={0} bg={rose} borderRadius="full" p={0.5}>
+                                  <Icon as={FiMicOff} color="white" boxSize={2.5} />
+                                </Box>
+                              )}
+                            </Box>
+                            <Text fontSize="10px" color={inkSoft} noOfLines={1} textAlign="center" w="full">
+                              {p.username}
+                            </Text>
+                          </Stack>
+                        ))}
+                      </HStack>
+                    </Box>
+                  )}
+
+                  <ReactionOverlay reactions={reactions} />
                 </Box>
 
                 <CallSidebar
@@ -313,6 +362,7 @@ const CallPanel = ({
                   borderColor={line}
                   onClick={onToggleCamera}
                 />
+                <ReactionPicker onSend={onSendReaction} />
                 <IconButton
                   aria-label="Leave call"
                   icon={<Icon as={FiPhoneOff} />}

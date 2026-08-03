@@ -19,6 +19,8 @@ import {
   SpeakingMode,
   StartCallSettings,
 } from '../api/calls';
+import { createSpeakingDetector, SpeakingDetector } from '../utils/localSpeakingDetector';
+import { computeFocusSet } from '../utils/callFocus';
 
 // Google's public STUN servers — free, no account, no cost. No TURN relay
 // (that needs a self-hosted VPS running coturn); direct P2P still connects
@@ -29,6 +31,7 @@ const ICE_SERVERS: RTCIceServer[] = [
 
 const POLL_INTERVAL_MS = 1500;
 const APPROVAL_POLL_INTERVAL_MS = 2000;
+const REACTION_LIFETIME_MS = 3000;
 
 export interface RemoteParticipant {
   userId: string;
@@ -36,6 +39,18 @@ export interface RemoteParticipant {
   stream: MediaStream | null;
   micEnabled: boolean;
   cameraEnabled: boolean;
+  /** Whether video is actually arriving right now — decoupled from `cameraEnabled` (their
+   * own toggle), since a mesh peer may also have stopped *sending* us video to save
+   * bandwidth (see focusedUserIds) even while their camera is otherwise on. */
+  hasVideo: boolean;
+  speaking: boolean;
+}
+
+export interface CallReaction {
+  id: string;
+  emoji: string;
+  userId: string;
+  username: string;
 }
 
 export function useWebRTCCall() {
@@ -45,6 +60,12 @@ export function useWebRTCCall() {
   const [remoteParticipants, setRemoteParticipants] = useState<Map<string, RemoteParticipant>>(new Map());
   const [micEnabled, setMicEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(true);
+  const [mySpeaking, setMySpeaking] = useState(false);
+
+  // Smart mesh limits — bounded set of participants who actually get video sent to/from
+  // them, so bandwidth stays flat instead of growing with the square of the group size.
+  const [focusedUserIds, setFocusedUserIds] = useState<Set<string>>(new Set());
+  const [reactions, setReactions] = useState<CallReaction[]>([]);
 
   // Structured speaking turns — the feature that makes this different from a plain
   // Meet-style call: a raise-hand queue with a per-speaker timer, tailored to language
@@ -68,13 +89,18 @@ export function useWebRTCCall() {
   const pendingChannelIdRef = useRef<string | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const videoSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
   const pendingCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const usernamesRef = useRef<Map<string, string>>(new Map());
+  const remoteParticipantsRef = useRef<Map<string, RemoteParticipant>>(new Map());
+  const lastSpokeAtRef = useRef<Map<string, number>>(new Map());
+  const joinOrderRef = useRef<string[]>([]);
   const lastSignalAtRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const approvalPollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const advanceInFlightRef = useRef(false);
   const leaveRef = useRef<() => Promise<void>>(async () => undefined);
+  const speakingDetectorRef = useRef<SpeakingDetector | null>(null);
 
   const upsertRemoteParticipant = useCallback((userId: string, patch: Partial<RemoteParticipant>) => {
     setRemoteParticipants((prev) => {
@@ -85,16 +111,49 @@ export function useWebRTCCall() {
         stream: null,
         micEnabled: true,
         cameraEnabled: true,
+        hasVideo: false,
+        speaking: false,
       };
-      next.set(userId, { ...existing, ...patch });
+      const merged = { ...existing, ...patch };
+      next.set(userId, merged);
+      remoteParticipantsRef.current = next;
       return next;
     });
+  }, []);
+
+  /** Applies the shared focus-set decision to one connection's outgoing video — the actual
+   * bandwidth lever. `replaceTrack` needs no renegotiation, so this is cheap to call often. */
+  const applyFocusToSender = useCallback((remoteUserId: string, focusSet: Set<string>) => {
+    const sender = videoSendersRef.current.get(remoteUserId);
+    if (!sender) return;
+    const myVideoTrack = localStreamRef.current?.getVideoTracks()[0] || null;
+    const wantTrack = focusSet.has(remoteUserId) && myVideoTrack?.enabled ? myVideoTrack : null;
+    if (sender.track !== wantTrack) sender.replaceTrack(wantTrack).catch(() => undefined);
+  }, []);
+
+  const recomputeFocus = useCallback(
+    (currentSpeakerId: string | null) => {
+      const focusSet = computeFocusSet({ currentSpeakerId, lastSpokeAt: lastSpokeAtRef.current, joinOrder: joinOrderRef.current });
+      setFocusedUserIds(focusSet);
+      videoSendersRef.current.forEach((_sender, remoteUserId) => applyFocusToSender(remoteUserId, focusSet));
+    },
+    [applyFocusToSender],
+  );
+
+  const addReaction = useCallback((emoji: string, fromUserId: string) => {
+    const id = `${fromUserId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const username = fromUserId === myUserIdRef.current ? 'You' : usernamesRef.current.get(fromUserId) || 'Learner';
+    setReactions((prev) => [...prev, { id, emoji, userId: fromUserId, username }]);
+    setTimeout(() => setReactions((prev) => prev.filter((r) => r.id !== id)), REACTION_LIFETIME_MS);
   }, []);
 
   const createPeerConnection = useCallback(
     (remoteUserId: string) => {
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-      localStreamRef.current?.getTracks().forEach((track) => pc.addTrack(track, localStreamRef.current!));
+      localStreamRef.current?.getTracks().forEach((track) => {
+        const sender = pc.addTrack(track, localStreamRef.current!);
+        if (track.kind === 'video') videoSendersRef.current.set(remoteUserId, sender);
+      });
 
       pc.onicecandidate = (e) => {
         if (e.candidate && callSessionIdRef.current) {
@@ -102,11 +161,19 @@ export function useWebRTCCall() {
         }
       };
       pc.ontrack = (e) => {
-        upsertRemoteParticipant(remoteUserId, { stream: e.streams[0] });
+        if (e.track.kind === 'video') {
+          const track = e.track;
+          upsertRemoteParticipant(remoteUserId, { stream: e.streams[0], hasVideo: !track.muted });
+          track.onmute = () => upsertRemoteParticipant(remoteUserId, { hasVideo: false });
+          track.onunmute = () => upsertRemoteParticipant(remoteUserId, { hasVideo: true });
+        } else {
+          upsertRemoteParticipant(remoteUserId, { stream: e.streams[0] });
+        }
       };
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
           peerConnectionsRef.current.delete(remoteUserId);
+          videoSendersRef.current.delete(remoteUserId);
         }
       };
 
@@ -163,9 +230,12 @@ export function useWebRTCCall() {
     peerConnectionsRef.current.get(fromUserId)?.close();
     peerConnectionsRef.current.delete(fromUserId);
     pendingCandidatesRef.current.delete(fromUserId);
+    videoSendersRef.current.delete(fromUserId);
+    lastSpokeAtRef.current.delete(fromUserId);
     setRemoteParticipants((prev) => {
       const next = new Map(prev);
       next.delete(fromUserId);
+      remoteParticipantsRef.current = next;
       return next;
     });
   }, []);
@@ -182,6 +252,12 @@ export function useWebRTCCall() {
       else if (signal.type === 'LEAVE') handleLeave(signal.fromUserId);
       else if (signal.type === 'MEDIA_STATE') {
         upsertRemoteParticipant(signal.fromUserId, { micEnabled: Boolean(payload?.micEnabled), cameraEnabled: Boolean(payload?.cameraEnabled) });
+      } else if (signal.type === 'SPEAKING') {
+        const speaking = Boolean(payload?.speaking);
+        upsertRemoteParticipant(signal.fromUserId, { speaking });
+        if (speaking) lastSpokeAtRef.current.set(signal.fromUserId, new Date(signal.createdAt).getTime());
+      } else if (signal.type === 'REACTION') {
+        if (typeof payload?.emoji === 'string') addReaction(payload.emoji, signal.fromUserId);
       } else if (signal.type === 'FORCE_MUTE') {
         localStreamRef.current?.getAudioTracks().forEach((t) => (t.enabled = false));
         setMicEnabled(false);
@@ -196,34 +272,51 @@ export function useWebRTCCall() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleOffer, handleAnswer, handleIceCandidate, handleLeave, upsertRemoteParticipant]);
+  }, [handleOffer, handleAnswer, handleIceCandidate, handleLeave, upsertRemoteParticipant, addReaction]);
 
-  const applyCallSettingsState = useCallback((state: CallSettingsState) => {
-    setSpeakingMode(state.speakingMode);
-    setSpeakerTimeSec(state.speakerTimeSec);
-    setCurrentSpeaker(state.currentSpeaker);
-    setCurrentSpeakerStartedAt(state.currentSpeakerStartedAt);
-    setQueue(state.queue);
-    setRequireApproval(state.requireApproval);
-    setAutoMuteOnJoin(state.autoMuteOnJoin);
-    setTopic(state.topic);
-    setIsHost(state.isHost);
-    setJoinRequests(state.joinRequests);
-    setCallStartedAt(state.startedAt);
+  const applyCallSettingsState = useCallback(
+    (state: CallSettingsState) => {
+      setSpeakingMode(state.speakingMode);
+      setSpeakerTimeSec(state.speakerTimeSec);
+      setCurrentSpeaker(state.currentSpeaker);
+      setCurrentSpeakerStartedAt(state.currentSpeakerStartedAt);
+      setQueue(state.queue);
+      setRequireApproval(state.requireApproval);
+      setAutoMuteOnJoin(state.autoMuteOnJoin);
+      setTopic(state.topic);
+      setIsHost(state.isHost);
+      setJoinRequests(state.joinRequests);
+      setCallStartedAt(state.startedAt);
 
-    // In structured mode, only the current speaker's mic is actually live — enforced here,
-    // not just in the UI, so no one can talk over their turn.
-    if (state.speakingMode === 'STRUCTURED') {
-      const isMyTurn = state.currentSpeaker?.id === myUserIdRef.current;
-      localStreamRef.current?.getAudioTracks().forEach((t) => (t.enabled = isMyTurn));
-      setMicEnabled(isMyTurn);
-    }
-  }, []);
+      // In structured mode, only the current speaker's mic is actually live — enforced here,
+      // not just in the UI, so no one can talk over their turn.
+      if (state.speakingMode === 'STRUCTURED') {
+        const isMyTurn = state.currentSpeaker?.id === myUserIdRef.current;
+        localStreamRef.current?.getAudioTracks().forEach((t) => (t.enabled = isMyTurn));
+        setMicEnabled(isMyTurn);
+      }
+
+      recomputeFocus(state.currentSpeaker?.id ?? null);
+    },
+    [recomputeFocus],
+  );
 
   const refreshCallState = useCallback(async () => {
     if (!callSessionIdRef.current) return;
     const state = await fetchCallState(callSessionIdRef.current).catch(() => null);
     if (!state) return;
+
+    // Authoritative participant list — keeps usernames correct for anyone who joined after
+    // us (the WebRTC handshake alone doesn't carry a display name) and gives a stable join
+    // order for the focus-set fallback ranking.
+    const others = state.participants.filter((p) => p.userId !== myUserIdRef.current);
+    const sorted = [...others].sort((a, b) => new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime());
+    joinOrderRef.current = sorted.map((p) => p.userId);
+    for (const p of sorted) {
+      usernamesRef.current.set(p.userId, p.user.username);
+      if (!remoteParticipantsRef.current.has(p.userId)) upsertRemoteParticipant(p.userId, {});
+    }
+
     applyCallSettingsState(state);
 
     // Only the speaker's own client auto-advances when their time is up (the host can always
@@ -242,12 +335,17 @@ export function useWebRTCCall() {
         advanceInFlightRef.current = false;
       }
     }
-  }, [applyCallSettingsState]);
+  }, [applyCallSettingsState, upsertRemoteParticipant]);
 
   const finishJoining = useCallback(
     async (result: { callSessionId: string; participants: CallParticipant[] } & CallSettingsState, overrideParticipants?: CallParticipant[]) => {
       callSessionIdRef.current = result.callSessionId;
       lastSignalAtRef.current = new Date().toISOString();
+
+      const participants = overrideParticipants || result.participants;
+      const sorted = [...participants].sort((a, b) => new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime());
+      joinOrderRef.current = sorted.map((p) => p.userId);
+
       applyCallSettingsState(result);
 
       if (result.autoMuteOnJoin) {
@@ -255,8 +353,7 @@ export function useWebRTCCall() {
         setMicEnabled(false);
       }
 
-      const participants = overrideParticipants || result.participants;
-      for (const p of participants) {
+      for (const p of sorted) {
         usernamesRef.current.set(p.userId, p.user.username);
         upsertRemoteParticipant(p.userId, {});
         const pc = createPeerConnection(p.userId);
@@ -323,6 +420,14 @@ export function useWebRTCCall() {
         localStreamRef.current = stream;
         setLocalStream(stream);
 
+        speakingDetectorRef.current = createSpeakingDetector((speaking) => {
+          setMySpeaking(speaking);
+          if (callSessionIdRef.current) {
+            sendCallSignal(callSessionIdRef.current, 'SPEAKING', null, { speaking }).catch(() => undefined);
+          }
+        });
+        speakingDetectorRef.current.start(stream);
+
         const result = await joinCall(channelId, settings);
         if (result.pending) {
           callSessionIdRef.current = result.callSessionId;
@@ -347,13 +452,22 @@ export function useWebRTCCall() {
     approvalPollTimerRef.current = null;
     if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     pollTimerRef.current = null;
+    speakingDetectorRef.current?.stop();
+    speakingDetectorRef.current = null;
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     localStreamRef.current = null;
     setLocalStream(null);
     peerConnectionsRef.current.forEach((pc) => pc.close());
     peerConnectionsRef.current.clear();
+    videoSendersRef.current.clear();
     pendingCandidatesRef.current.clear();
+    lastSpokeAtRef.current.clear();
+    joinOrderRef.current = [];
+    remoteParticipantsRef.current = new Map();
     setRemoteParticipants(new Map());
+    setFocusedUserIds(new Set());
+    setReactions([]);
+    setMySpeaking(false);
     if (callSessionIdRef.current) {
       await leaveCall(callSessionIdRef.current).catch(() => undefined);
     }
@@ -396,7 +510,10 @@ export function useWebRTCCall() {
     if (callSessionIdRef.current) {
       sendCallSignal(callSessionIdRef.current, 'MEDIA_STATE', null, { micEnabled, cameraEnabled: next }).catch(() => undefined);
     }
-  }, [cameraEnabled, micEnabled]);
+    // Re-apply focus immediately — turning the camera off/on should stop/resume outgoing
+    // video to focused peers right away, not wait for the next poll tick.
+    videoSendersRef.current.forEach((_sender, remoteUserId) => applyFocusToSender(remoteUserId, focusedUserIds));
+  }, [cameraEnabled, micEnabled, focusedUserIds, applyFocusToSender]);
 
   const raiseHand = useCallback(async () => {
     if (!callSessionIdRef.current) return;
@@ -449,6 +566,15 @@ export function useWebRTCCall() {
     await sendCallSignal(callSessionIdRef.current, 'FORCE_MUTE', targetUserId, {}).catch(() => undefined);
   }, []);
 
+  const sendReaction = useCallback(
+    async (emoji: string) => {
+      if (!callSessionIdRef.current || !myUserIdRef.current) return;
+      addReaction(emoji, myUserIdRef.current); // optimistic local echo — we never receive our own broadcast back
+      await sendCallSignal(callSessionIdRef.current, 'REACTION', null, { emoji }).catch(() => undefined);
+    },
+    [addReaction],
+  );
+
   return {
     status,
     error,
@@ -456,6 +582,9 @@ export function useWebRTCCall() {
     remoteParticipants: Array.from(remoteParticipants.values()),
     micEnabled,
     cameraEnabled,
+    mySpeaking,
+    focusedUserIds,
+    reactions,
     speakingMode,
     speakerTimeSec,
     currentSpeaker,
@@ -479,5 +608,6 @@ export function useWebRTCCall() {
     denyJoinRequest,
     kickParticipant,
     forceMuteParticipant,
+    sendReaction,
   };
 }
