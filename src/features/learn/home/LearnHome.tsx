@@ -15,7 +15,6 @@ const PracticeView = lazy(() => import('../../home/practice/PracticeView'));
 const ReadingView = lazy(() => import('../../home/reading/ReadingView'));
 const ListeningView = lazy(() => import('../../home/listening/ListeningView'));
 const CoursesView = lazy(() => import('../../home/CoursesView'));
-const LearningPathsView = lazy(() => import('../../home/paths/LearningPathsView'));
 const CommunityView = lazy(() => import('../../community/CommunityView'));
 
 const PanelFallback = () => (
@@ -48,7 +47,6 @@ const PanelSurface = ({ title, children }: { title?: string; children: React.Rea
 const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
   const [activeSection, setActiveSection] = useState('dashboard');
   const [openCourseId, setOpenCourseId] = useState<string | null>(null);
-  const [openPathId, setOpenPathId] = useState<string | null>(null);
   const { user, refetchUser } = useMe(Boolean(token));
   const { data, isLoading, error, retryable, refetch } = useDashboard({ enabled: Boolean(token) });
   const { isOpen: isProfileOpen, onOpen: onOpenProfile, onClose: onCloseProfile } = useDisclosure();
@@ -62,8 +60,6 @@ const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
     switch (activeSection) {
       case 'courses':
         return <CoursesView openCourseId={openCourseId} onOpenCourse={setOpenCourseId} onDataChanged={refetch} />;
-      case 'paths':
-        return <LearningPathsView openPathId={openPathId} onOpenPath={setOpenPathId} onOpenCourse={openCourse} />;
       case 'community':
         return (
           <PanelSurface>
@@ -130,7 +126,6 @@ const LearnHome = ({ onLogout, token }: LearnHomeProps) => {
         onSectionChange={(id) => {
           setActiveSection(id);
           if (id !== 'courses') setOpenCourseId(null);
-          if (id !== 'paths') setOpenPathId(null);
         }}
         username={user?.firstName || user?.username}
         streakDays={data?.summary?.streakDays ?? 0}

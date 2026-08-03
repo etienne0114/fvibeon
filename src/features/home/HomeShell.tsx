@@ -23,7 +23,6 @@ import {
   FiTarget,
   FiAward,
   FiLogOut,
-  FiMap,
   FiUsers,
 } from 'react-icons/fi';
 import { ink, inkSoft, rose, cream, line, serif, roseTint, sageTint } from '../../theme/brand';
@@ -37,7 +36,6 @@ export interface HomeSection {
 export const HOME_SECTIONS: HomeSection[] = [
   { id: 'dashboard', title: 'Dashboard', icon: FiHome },
   { id: 'courses', title: 'Courses', icon: FiBookOpen },
-  { id: 'paths', title: 'Paths', icon: FiMap },
   { id: 'translator', title: 'Translator', icon: FiGlobe },
   { id: 'reading', title: 'Reading', icon: FiBookmark },
   { id: 'listening', title: 'Listening', icon: FiHeadphones },
