@@ -51,6 +51,28 @@ const theme = extendTheme({
     heading: '"Outfit", "Inter", system-ui, sans-serif',
     body: '"Inter", system-ui, sans-serif',
   },
+  // The app leaned on Chakra's "xs" (12px) and "sm" (14px) tokens for most body
+  // text, which reads as too small on modern displays — bump those two toward a
+  // standard, comfortably-legible size. Kept in rem (not px) so they scale with
+  // the responsive root font-size below instead of staying visually fixed.
+  fontSizes: {
+    xs: '0.8125rem', // 13px (was 12px)
+    sm: '0.9375rem', // 15px (was 14px)
+  },
+  styles: {
+    global: {
+      // Root font-size drives every rem-based Chakra token (fontSizes AND
+      // spacing/sizing) at once — the standard technique for "the whole UI
+      // reads bigger on a large screen" without touching individual components.
+      html: {
+        fontSize: { base: '16px', lg: '17px', '2xl': '18px' },
+      },
+      body: {
+        fontSize: 'md',
+        lineHeight: 'base',
+      },
+    },
+  },
   shadows: {
     premium: '0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0, 0, 0, 0.02)',
     'premium-hover': '0 20px 25px -5px rgba(0, 0, 0, 0.07), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
