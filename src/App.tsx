@@ -56,9 +56,14 @@ const App = () => {
   // silently continuing as them instead of prompting the intended recipient
   // to log in is the wrong outcome. Force a fresh sign-in whenever this
   // specific link is followed, regardless of who was already logged in.
+  //
+  // This only fires once, right when the link is followed — the hash gets
+  // cleared from the URL immediately after, so a later reload of the same
+  // tab (a real, still-valid session) doesn't get bounced back to login too.
   useEffect(() => {
-    if (window.location.hash === '#auth' && token) {
-      logout();
+    if (window.location.hash === '#auth') {
+      if (token) logout();
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
