@@ -15,6 +15,10 @@ import {
   Icon,
   IconButton,
   Input,
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuList,
   Skeleton,
   Stack,
   Text,
@@ -34,6 +38,8 @@ import {
   revokeDebateApproval,
   resolveDebateRequest,
   fetchMyDebateStatus,
+  toggleMessageReaction,
+  parseDebatePhases,
   ChannelSummary,
   ChannelMessage,
   DebateRequest,
@@ -41,23 +47,28 @@ import {
 import { fetchActiveCall, ActiveCall, StartCallSettings } from '../../api/calls';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
 import { useWebRTCCall } from '../../hooks/useWebRTCCall';
+import { toBcp47 } from '../../utils/liveCaptions';
 import { useMe } from '../../hooks/useMe';
 import CallPanel from './CallPanel';
 import MeetingSettingsModal from './MeetingSettingsModal';
+import DebateHeader from './DebateHeader';
+import MessageReactionBar from './MessageReactionBar';
 import { blobToBase64, MAX_UPLOAD_BYTES, ConfirmModal } from './shared';
-import { ink, inkSoft, rose, roseDeep, card, line, serif, sage, sageDeep, sageTint, amber, amberDeep, amberTint } from '../../theme/brand';
+import { ink, inkSoft, rose, roseDeep, roseTint, card, line, serif, sage, sageDeep, sageTint, amber, amberDeep, amberTint } from '../../theme/brand';
 
 const MessageBubble = ({
   message,
   canDelete,
   onDelete,
   onReply,
+  onToggleReaction,
 }: {
   message: ChannelMessage;
   canDelete: boolean;
   onDelete: () => void;
   /** Omitted inside the thread panel itself — replies don't get their own sub-threads. */
   onReply?: () => void;
+  onToggleReaction?: (emoji: string) => void;
 }) => (
   <Stack spacing={0.5} align="flex-start" role="group" w="full">
     <HStack spacing={2} w="full" justify="space-between">
@@ -95,6 +106,7 @@ const MessageBubble = ({
         <img src={messageMediaUrl(message.id)} alt="Shared" style={{ maxWidth: '100%', display: 'block' }} />
       </Box>
     )}
+    {onToggleReaction && <MessageReactionBar reactions={message.reactions || []} onToggle={onToggleReaction} />}
     {onReply && Boolean(message.replyCount) && (
       <HStack as="button" spacing={1.5} mt={0.5} onClick={onReply} color={roseDeep}>
         <Icon as={FiCornerUpLeft} boxSize={3} />
@@ -171,6 +183,15 @@ const ThreadPanel = ({
     }
   };
 
+  const toggleReaction = async (targetMessageId: string, emoji: string) => {
+    try {
+      await toggleMessageReaction(targetMessageId, emoji);
+      await load();
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not react', status: 'error', duration: 2000, position: 'top' });
+    }
+  };
+
   const toggleVoiceReply = async () => {
     if (recorder.isRecording) {
       recorder.stopRecording();
@@ -241,7 +262,7 @@ const ThreadPanel = ({
             ) : (
               <>
                 <Box pb={3} mb={3} borderBottom="1px solid" borderColor={line}>
-                  <MessageBubble message={root} canDelete={false} onDelete={() => {}} />
+                  <MessageBubble message={root} canDelete={false} onDelete={() => {}} onToggleReaction={(emoji) => toggleReaction(root.id, emoji)} />
                 </Box>
                 <Text fontSize="xs" fontWeight="700" color={inkSoft} mb={2}>
                   {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
@@ -258,6 +279,7 @@ const ThreadPanel = ({
                         message={r}
                         canDelete={r.user.id === me?.id || isModerator}
                         onDelete={() => setConfirmDeleteId(r.id)}
+                        onToggleReaction={(emoji) => toggleReaction(r.id, emoji)}
                       />
                     ))
                   )}
@@ -437,6 +459,15 @@ export const ChannelThread = ({
     }
   };
 
+  const toggleReaction = async (messageId: string, emoji: string) => {
+    try {
+      await toggleMessageReaction(messageId, emoji);
+      await load();
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not react', status: 'error', duration: 2000, position: 'top' });
+    }
+  };
+
   const toggleVoiceNote = async () => {
     if (recorder.isRecording) {
       recorder.stopRecording();
@@ -495,8 +526,8 @@ export const ChannelThread = ({
     }
   };
 
-  const resolveRequest = async (requestId: string, approve: boolean) => {
-    await resolveDebateRequest(requestId, approve).catch(() => undefined);
+  const resolveRequest = async (requestId: string, approve: boolean, side?: 'FOR' | 'AGAINST') => {
+    await resolveDebateRequest(requestId, approve, side).catch(() => undefined);
     setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
     if (approve) await load();
   };
@@ -543,6 +574,8 @@ export const ChannelThread = ({
         </Text>
       )}
 
+      {channel.type === 'DEBATE' && <DebateHeader channel={channel} />}
+
       {isModerator && pendingRequests.length > 0 && (
         <Box bg={amberTint} border="1px solid" borderColor={amber} borderRadius="lg" p={3}>
           <Text fontSize="xs" fontWeight="700" color={amberDeep} mb={2}>
@@ -553,7 +586,18 @@ export const ChannelThread = ({
               <HStack key={r.id} justify="space-between">
                 <Text fontSize="sm">@{r.user.username}</Text>
                 <HStack spacing={1}>
-                  <IconButton aria-label="Approve" icon={<FiCheck />} size="xs" bg={sage} color="white" onClick={() => resolveRequest(r.id, true)} />
+                  {channel.debateQuestion ? (
+                    <Menu placement="bottom-end">
+                      <MenuButton as={IconButton} aria-label="Approve" icon={<FiCheck />} size="xs" bg={sage} color="white" _hover={{ bg: sageDeep }} />
+                      <MenuList fontSize="sm" minW="160px">
+                        <MenuItem onClick={() => resolveRequest(r.id, true, 'FOR')}>Approve — For</MenuItem>
+                        <MenuItem onClick={() => resolveRequest(r.id, true, 'AGAINST')}>Approve — Against</MenuItem>
+                        <MenuItem onClick={() => resolveRequest(r.id, true)}>Approve — no side</MenuItem>
+                      </MenuList>
+                    </Menu>
+                  ) : (
+                    <IconButton aria-label="Approve" icon={<FiCheck />} size="xs" bg={sage} color="white" onClick={() => resolveRequest(r.id, true)} />
+                  )}
                   <IconButton aria-label="Decline" icon={<FiX />} size="xs" bg={rose} color="white" onClick={() => resolveRequest(r.id, false)} />
                 </HStack>
               </HStack>
@@ -570,7 +614,20 @@ export const ChannelThread = ({
           <Stack spacing={1.5}>
             {approvedParticipants.map((r) => (
               <HStack key={r.id} justify="space-between">
-                <Text fontSize="sm">@{r.user.username}</Text>
+                <HStack spacing={2}>
+                  <Text fontSize="sm">@{r.user.username}</Text>
+                  {r.side && (
+                    <Badge
+                      fontSize="9px"
+                      borderRadius="full"
+                      px={2}
+                      bg={r.side === 'FOR' ? sageTint : roseTint}
+                      color={r.side === 'FOR' ? sageDeep : roseDeep}
+                    >
+                      {r.side}
+                    </Badge>
+                  )}
+                </HStack>
                 <Button size="xs" variant="outline" borderColor={line} color={inkSoft} onClick={() => revokeApproval(r.id)}>
                   Revoke
                 </Button>
@@ -598,6 +655,7 @@ export const ChannelThread = ({
               canDelete={m.user.id === me?.id || isModerator}
               onDelete={() => setConfirmDeleteMessageId(m.id)}
               onReply={() => setOpenThreadMessageId(m.id)}
+              onToggleReaction={(emoji) => toggleReaction(m.id, emoji)}
             />
           ))
         )}
@@ -681,6 +739,7 @@ export const ChannelThread = ({
       <MeetingSettingsModal
         isOpen={showCallSettings}
         channelName={channel.name}
+        debatePhases={parseDebatePhases(channel.debatePhases)}
         onClose={() => setShowCallSettings(false)}
         onStart={confirmStartCall}
       />
@@ -710,6 +769,11 @@ export const ChannelThread = ({
         isHost={call.isHost}
         joinRequests={call.joinRequests}
         callStartedAt={call.callStartedAt}
+        phases={call.phases}
+        currentPhaseIndex={call.currentPhaseIndex}
+        captionsSupported={call.captionsSupported}
+        captionsEnabled={call.captionsEnabled}
+        captions={call.captions}
         onToggleMic={call.toggleMic}
         onToggleCamera={call.toggleCamera}
         onLeave={leaveCallPanel}
@@ -722,6 +786,8 @@ export const ChannelThread = ({
         onKick={call.kickParticipant}
         onForceMute={call.forceMuteParticipant}
         onSendReaction={call.sendReaction}
+        onAdvancePhase={call.advancePhase}
+        onToggleCaptions={() => call.toggleCaptions(toBcp47(me?.preferredLanguage))}
       />
     </Stack>
   );

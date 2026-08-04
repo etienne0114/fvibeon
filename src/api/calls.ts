@@ -19,6 +19,11 @@ export interface PendingJoinRequest {
   username: string;
 }
 
+export interface CallPhase {
+  name: string;
+  perSideSeconds: number;
+}
+
 export interface CallSettingsState {
   speakingMode: SpeakingMode;
   speakerTimeSec: number | null;
@@ -34,6 +39,9 @@ export interface CallSettingsState {
   isHost: boolean;
   /** Populated only when the caller is the call's host. */
   joinRequests: PendingJoinRequest[];
+  /** A debate's formal phase structure, if its creator set one — null for open format. */
+  phases: CallPhase[] | null;
+  currentPhaseIndex: number | null;
 }
 
 export interface ActiveCall extends CallSettingsState {
@@ -63,7 +71,7 @@ export interface CallSignal {
   id: string;
   fromUserId: string;
   toUserId: string | null;
-  type: 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE' | 'JOIN' | 'LEAVE' | 'KICKED' | 'MEDIA_STATE' | 'FORCE_MUTE' | 'SPEAKING' | 'REACTION';
+  type: 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE' | 'JOIN' | 'LEAVE' | 'KICKED' | 'MEDIA_STATE' | 'FORCE_MUTE' | 'SPEAKING' | 'REACTION' | 'CAPTION';
   payload: string;
   createdAt: string;
 }
@@ -115,13 +123,17 @@ export async function updateCallSettings(
   return unwrap(await client.patch(`/calls/${callSessionId}/settings`, patch));
 }
 
+export async function advancePhase(callSessionId: string): Promise<CallSettingsState> {
+  return unwrap(await client.post(`/calls/${callSessionId}/advance-phase`));
+}
+
 export async function removeParticipant(callSessionId: string, targetUserId: string): Promise<CallSettingsState> {
   return unwrap(await client.post(`/calls/${callSessionId}/participants/${targetUserId}/remove`));
 }
 
 export async function sendCallSignal(
   callSessionId: string,
-  type: 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE' | 'MEDIA_STATE' | 'FORCE_MUTE' | 'SPEAKING' | 'REACTION',
+  type: 'OFFER' | 'ANSWER' | 'ICE_CANDIDATE' | 'MEDIA_STATE' | 'FORCE_MUTE' | 'SPEAKING' | 'REACTION' | 'CAPTION',
   toUserId: string | null,
   payload: unknown,
 ) {

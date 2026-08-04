@@ -17,9 +17,9 @@ import {
   Text,
 } from '@chakra-ui/react';
 import { FiClock, FiMic, FiMicOff, FiPhoneOff, FiSkipForward, FiVideo, FiVideoOff } from 'react-icons/fi';
-import { PiHandPalmFill } from 'react-icons/pi';
-import { CallReaction, RemoteParticipant } from '../../hooks/useWebRTCCall';
-import { PendingJoinRequest, QueuedSpeaker, SpeakingMode } from '../../api/calls';
+import { PiHandPalmFill, PiClosedCaptioningBold } from 'react-icons/pi';
+import { CallReaction, CaptionLine, RemoteParticipant } from '../../hooks/useWebRTCCall';
+import { CallPhase, PendingJoinRequest, QueuedSpeaker, SpeakingMode } from '../../api/calls';
 import { ink, inkSoft, rose, roseDeep, sage, sageDeep, sageTint, card, line, serif } from '../../theme/brand';
 import VideoTile from './call/VideoTile';
 import CallSidebar, { SidebarParticipant } from './call/CallSidebar';
@@ -84,6 +84,11 @@ const CallPanel = ({
   isHost,
   joinRequests,
   callStartedAt,
+  phases,
+  currentPhaseIndex,
+  captionsSupported,
+  captionsEnabled,
+  captions,
   onToggleMic,
   onToggleCamera,
   onLeave,
@@ -96,6 +101,8 @@ const CallPanel = ({
   onKick,
   onForceMute,
   onSendReaction,
+  onAdvancePhase,
+  onToggleCaptions,
 }: {
   isOpen: boolean;
   channelName: string;
@@ -121,6 +128,11 @@ const CallPanel = ({
   isHost: boolean;
   joinRequests: PendingJoinRequest[];
   callStartedAt: string | null;
+  phases: CallPhase[] | null;
+  currentPhaseIndex: number | null;
+  captionsSupported: boolean;
+  captionsEnabled: boolean;
+  captions: CaptionLine[];
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onLeave: () => void;
@@ -132,7 +144,9 @@ const CallPanel = ({
   onDeny: (userId: string) => void;
   onKick: (userId: string) => void;
   onForceMute: (userId: string) => void;
+  onAdvancePhase: () => void;
   onSendReaction: (emoji: string) => void;
+  onToggleCaptions: () => void;
 }) => {
   const structured = speakingMode === 'STRUCTURED';
   const isSpeaking = structured ? currentSpeaker?.id === myUserId : mySpeaking;
@@ -208,7 +222,9 @@ const CallPanel = ({
                   )}
                   {structured && (
                     <Text fontSize="9px" fontWeight="700" bg={sageTint} color={sageDeep} borderRadius="full" px={2} py={0.5} whiteSpace="nowrap">
-                      STRUCTURED · {speakerTimeSec}S/SPEAKER
+                      {phases && currentPhaseIndex !== null
+                        ? `${phases[currentPhaseIndex].name.toUpperCase()} (${currentPhaseIndex + 1}/${phases.length}) · ${speakerTimeSec}S/SPEAKER`
+                        : `STRUCTURED · ${speakerTimeSec}S/SPEAKER`}
                     </Text>
                   )}
                   {callStartedAt && <CallDuration startedAt={callStartedAt} />}
@@ -251,9 +267,16 @@ const CallPanel = ({
                         </Text>
                       )}
                     </HStack>
-                    {isHost && currentSpeaker && (
-                      <IconButton aria-label="Skip to next speaker" icon={<Icon as={FiSkipForward} />} size="xs" variant="ghost" onClick={onSkipSpeaker} />
-                    )}
+                    <HStack spacing={1}>
+                      {isHost && phases && currentPhaseIndex !== null && currentPhaseIndex < phases.length - 1 && (
+                        <Button size="xs" variant="outline" borderColor={sage} color={sageDeep} onClick={onAdvancePhase}>
+                          Next: {phases[currentPhaseIndex + 1].name}
+                        </Button>
+                      )}
+                      {isHost && currentSpeaker && (
+                        <IconButton aria-label="Skip to next speaker" icon={<Icon as={FiSkipForward} />} size="xs" variant="ghost" onClick={onSkipSpeaker} />
+                      )}
+                    </HStack>
                   </HStack>
                 </Box>
               )}
@@ -308,6 +331,24 @@ const CallPanel = ({
                   )}
 
                   <ReactionOverlay reactions={reactions} />
+
+                  {captions.length > 0 && (
+                    <Stack position="absolute" bottom={2} left="50%" transform="translateX(-50%)" spacing={1} maxW="90%" align="center" pointerEvents="none">
+                      {[...captions]
+                        .sort((a, b) => a.updatedAt - b.updatedAt)
+                        .slice(-2)
+                        .map((c) => (
+                          <Box key={c.userId} bg="blackAlpha.750" borderRadius="md" px={3} py={1.5}>
+                            <Text fontSize="sm" color="white" textAlign="center">
+                              <Text as="span" fontWeight="700">
+                                {c.username}:
+                              </Text>{' '}
+                              {c.text}
+                            </Text>
+                          </Box>
+                        ))}
+                    </Stack>
+                  )}
                 </Box>
 
                 <CallSidebar
@@ -362,6 +403,19 @@ const CallPanel = ({
                   borderColor={line}
                   onClick={onToggleCamera}
                 />
+                {captionsSupported && (
+                  <IconButton
+                    aria-label={captionsEnabled ? 'Turn off captions of my speech' : 'Caption my speech'}
+                    icon={<Icon as={PiClosedCaptioningBold} />}
+                    borderRadius="full"
+                    size="lg"
+                    bg={captionsEnabled ? sage : 'white'}
+                    color={captionsEnabled ? 'white' : ink}
+                    border="1px solid"
+                    borderColor={captionsEnabled ? sage : line}
+                    onClick={onToggleCaptions}
+                  />
+                )}
                 <ReactionPicker onSend={onSendReaction} />
                 <IconButton
                   aria-label="Leave call"

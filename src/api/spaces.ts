@@ -11,12 +11,31 @@ export interface SpaceSummary {
   _count: { memberships: number; channels: number };
 }
 
+export interface DebatePhase {
+  name: string;
+  perSideSeconds: number;
+}
+
 export interface ChannelSummary {
   id: string;
   name: string;
   description: string | null;
   type: 'TEXT' | 'DEBATE';
   order: number;
+  debateQuestion?: string | null;
+  debatePolicies?: string | null;
+  /** Raw JSON string from the API — use `parseDebatePhases` rather than JSON.parse directly. */
+  debatePhases?: string | null;
+}
+
+export function parseDebatePhases(raw?: string | null): DebatePhase[] | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface SpaceDetail extends SpaceSummary {
@@ -30,6 +49,12 @@ export interface PrivateSpaceLocked {
   notAMember: true;
 }
 
+export interface MessageReactionSummary {
+  emoji: string;
+  count: number;
+  reactedByMe: boolean;
+}
+
 export interface ChannelMessage {
   id: string;
   type: 'TEXT' | 'VOICE' | 'IMAGE';
@@ -38,6 +63,7 @@ export interface ChannelMessage {
   createdAt: string;
   user: { id: string; username: string };
   replyCount?: number;
+  reactions?: MessageReactionSummary[];
 }
 
 export interface DebateRequest {
@@ -45,8 +71,15 @@ export interface DebateRequest {
   channelId: string;
   userId: string;
   status: 'PENDING' | 'APPROVED' | 'DECLINED';
+  side?: 'FOR' | 'AGAINST' | null;
   createdAt: string;
   user: { id: string; username: string };
+}
+
+export interface DebateVoteTally {
+  counts: { FOR: number; AGAINST: number; NEUTRAL: number };
+  total: number;
+  myVote: 'FOR' | 'AGAINST' | 'NEUTRAL' | null;
 }
 
 export interface SpaceMember {
@@ -112,11 +145,17 @@ export async function transferOwnership(spaceId: string, userId: string) {
   return unwrap(await client.post(`/spaces/${spaceId}/transfer/${userId}`));
 }
 
-export async function createChannel(spaceId: string, name: string, description: string, type: 'TEXT' | 'DEBATE') {
-  return unwrap(await client.post(`/spaces/${spaceId}/channels`, { name, description, type }));
+export interface DebateChannelSettings {
+  debateQuestion?: string;
+  debatePolicies?: string;
+  debatePhases?: DebatePhase[];
 }
 
-export async function updateChannel(channelId: string, updates: { name?: string; description?: string }) {
+export async function createChannel(spaceId: string, name: string, description: string, type: 'TEXT' | 'DEBATE', debateSettings?: DebateChannelSettings) {
+  return unwrap(await client.post(`/spaces/${spaceId}/channels`, { name, description, type, ...debateSettings }));
+}
+
+export async function updateChannel(channelId: string, updates: { name?: string; description?: string } & DebateChannelSettings) {
   return unwrap(await client.patch(`/spaces/channels/${channelId}`, updates));
 }
 
@@ -162,8 +201,8 @@ export async function fetchMyDebateStatus(channelId: string): Promise<string | n
   return result.status;
 }
 
-export async function resolveDebateRequest(requestId: string, approve: boolean) {
-  return unwrap(await client.post(`/spaces/debate/requests/${requestId}/resolve`, { approve }));
+export async function resolveDebateRequest(requestId: string, approve: boolean, side?: 'FOR' | 'AGAINST') {
+  return unwrap(await client.post(`/spaces/debate/requests/${requestId}/resolve`, { approve, side }));
 }
 
 export async function fetchApprovedDebateParticipants(channelId: string): Promise<DebateRequest[]> {
@@ -172,4 +211,16 @@ export async function fetchApprovedDebateParticipants(channelId: string): Promis
 
 export async function revokeDebateApproval(requestId: string) {
   return unwrap(await client.post(`/spaces/debate/requests/${requestId}/revoke`));
+}
+
+export async function castDebateVote(channelId: string, side: 'FOR' | 'AGAINST' | 'NEUTRAL'): Promise<DebateVoteTally> {
+  return unwrap(await client.post(`/spaces/channels/${channelId}/debate/vote`, { side }));
+}
+
+export async function fetchDebateVoteTally(channelId: string): Promise<DebateVoteTally> {
+  return unwrap(await client.get(`/spaces/channels/${channelId}/debate/vote`));
+}
+
+export async function toggleMessageReaction(messageId: string, emoji: string): Promise<MessageReactionSummary[]> {
+  return unwrap(await client.post(`/spaces/messages/${messageId}/reactions`, { emoji }));
 }

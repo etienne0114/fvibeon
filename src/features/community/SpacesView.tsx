@@ -58,7 +58,6 @@ import {
   joinViaInvite,
   createInvite,
   leaveSpace,
-  createChannel,
   updateChannel,
   deleteChannel,
   SpaceSummary,
@@ -68,6 +67,7 @@ import {
 } from '../../api/spaces';
 import { ChannelThread } from './MessageThread';
 import SpaceSettingsModal from './SpaceSettingsModal';
+import CreateChannelModal from './CreateChannelModal';
 import { ConfirmModal } from './shared';
 import { ink, inkSoft, rose, card, line, serif, sageDeep, sageTint } from '../../theme/brand';
 
@@ -270,8 +270,6 @@ const SpaceDetailPanel = ({
   const [loading, setLoading] = useState(true);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
-  const [newChannelName, setNewChannelName] = useState('');
-  const [newChannelType, setNewChannelType] = useState<'TEXT' | 'DEBATE'>('TEXT');
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -341,17 +339,6 @@ const SpaceDetailPanel = ({
       toast({ title: err?.response?.data?.error || 'Could not join', status: 'error', duration: 3000, position: 'top' });
     } finally {
       setJoining(false);
-    }
-  };
-
-  const handleCreateChannel = async () => {
-    try {
-      await createChannel(spaceId, newChannelName, '', newChannelType);
-      setNewChannelName('');
-      setShowCreateChannel(false);
-      await load();
-    } catch (err: any) {
-      toast({ title: err?.response?.data?.error || 'Could not create channel', status: 'error', duration: 3000, position: 'top' });
     }
   };
 
@@ -441,7 +428,7 @@ const SpaceDetailPanel = ({
                 <Button size="sm" variant="outline" borderColor={line} leftIcon={<FiUserPlus />} onClick={handleInvite}>
                   Invite
                 </Button>
-                <Button size="sm" variant="outline" borderColor={line} leftIcon={<FiPlus />} onClick={() => setShowCreateChannel((v) => !v)}>
+                <Button size="sm" variant="outline" borderColor={line} leftIcon={<FiPlus />} onClick={() => setShowCreateChannel(true)}>
                   Channel
                 </Button>
                 <IconButton
@@ -481,25 +468,9 @@ const SpaceDetailPanel = ({
           </Alert>
         )}
 
-        {showCreateChannel && (
-          <HStack bg={card} borderRadius="lg" p={3} mt={3}>
-            <Input size="sm" placeholder="channel-name" value={newChannelName} onChange={(e) => setNewChannelName(e.target.value)} borderColor={line} bg="white" />
-            <RadioGroup value={newChannelType} onChange={(v) => setNewChannelType(v as 'TEXT' | 'DEBATE')}>
-              <HStack fontSize="xs">
-                <Radio size="sm" value="TEXT">
-                  Text
-                </Radio>
-                <Radio size="sm" value="DEBATE">
-                  Debate
-                </Radio>
-              </HStack>
-            </RadioGroup>
-            <Button size="sm" bg={ink} color="white" isDisabled={!newChannelName.trim()} onClick={handleCreateChannel}>
-              Add
-            </Button>
-          </HStack>
-        )}
       </Box>
+
+      <CreateChannelModal isOpen={showCreateChannel} spaceId={spaceId} onClose={() => setShowCreateChannel(false)} onCreated={load} />
 
       {!isMember ? (
         <Text fontSize="sm" color={inkSoft} textAlign="center" py={6}>

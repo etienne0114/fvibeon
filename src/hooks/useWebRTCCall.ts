@@ -12,7 +12,9 @@ import {
   resolveJoinRequest as apiResolveJoinRequest,
   updateCallSettings as apiUpdateCallSettings,
   removeParticipant as apiRemoveParticipant,
+  advancePhase as apiAdvancePhase,
   CallParticipant,
+  CallPhase,
   CallSettingsState,
   PendingJoinRequest,
   QueuedSpeaker,
@@ -21,6 +23,7 @@ import {
 } from '../api/calls';
 import { createSpeakingDetector, SpeakingDetector } from '../utils/localSpeakingDetector';
 import { computeFocusSet } from '../utils/callFocus';
+import { captionsSupported, createLiveCaptioner, LiveCaptioner } from '../utils/liveCaptions';
 
 // Google's public STUN servers — free, no account, no cost. No TURN relay
 // (that needs a self-hosted VPS running coturn); direct P2P still connects
@@ -32,6 +35,8 @@ const ICE_SERVERS: RTCIceServer[] = [
 const POLL_INTERVAL_MS = 1500;
 const APPROVAL_POLL_INTERVAL_MS = 2000;
 const REACTION_LIFETIME_MS = 3000;
+const CAPTION_SEND_THROTTLE_MS = 400; // interim results fire fast; final results always send immediately
+const CAPTION_STALE_MS = 8000; // clear a caption line once its speaker's been quiet this long
 
 export interface RemoteParticipant {
   userId: string;
@@ -53,6 +58,14 @@ export interface CallReaction {
   username: string;
 }
 
+export interface CaptionLine {
+  userId: string;
+  username: string;
+  text: string;
+  isFinal: boolean;
+  updatedAt: number;
+}
+
 export function useWebRTCCall() {
   const [status, setStatus] = useState<'idle' | 'connecting' | 'pending-approval' | 'in-call' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +79,11 @@ export function useWebRTCCall() {
   // them, so bandwidth stays flat instead of growing with the square of the group size.
   const [focusedUserIds, setFocusedUserIds] = useState<Set<string>>(new Set());
   const [reactions, setReactions] = useState<CallReaction[]>([]);
+
+  // Live captions — opt-in per person (each device can only transcribe its own mic),
+  // browser-only (Web Speech API), free.
+  const [captionsEnabled, setCaptionsEnabled] = useState(false);
+  const [captions, setCaptions] = useState<Map<string, CaptionLine>>(new Map());
 
   // Structured speaking turns — the feature that makes this different from a plain
   // Meet-style call: a raise-hand queue with a per-speaker timer, tailored to language
@@ -83,6 +101,10 @@ export function useWebRTCCall() {
   const [isHost, setIsHost] = useState(false);
   const [joinRequests, setJoinRequests] = useState<PendingJoinRequest[]>([]);
   const [callStartedAt, setCallStartedAt] = useState<string | null>(null);
+  // A debate's formal phase structure (opening statements -> rebuttal -> closing), if its
+  // creator set one — reuses this same structured-turns engine, just relabeled per round.
+  const [phases, setPhases] = useState<CallPhase[] | null>(null);
+  const [currentPhaseIndex, setCurrentPhaseIndex] = useState<number | null>(null);
 
   const callSessionIdRef = useRef<string | null>(null);
   const myUserIdRef = useRef<string | null>(null);
@@ -101,6 +123,8 @@ export function useWebRTCCall() {
   const advanceInFlightRef = useRef(false);
   const leaveRef = useRef<() => Promise<void>>(async () => undefined);
   const speakingDetectorRef = useRef<SpeakingDetector | null>(null);
+  const captionerRef = useRef<LiveCaptioner | null>(null);
+  const lastCaptionSentAtRef = useRef(0);
 
   const upsertRemoteParticipant = useCallback((userId: string, patch: Partial<RemoteParticipant>) => {
     setRemoteParticipants((prev) => {
@@ -145,6 +169,15 @@ export function useWebRTCCall() {
     const username = fromUserId === myUserIdRef.current ? 'You' : usernamesRef.current.get(fromUserId) || 'Learner';
     setReactions((prev) => [...prev, { id, emoji, userId: fromUserId, username }]);
     setTimeout(() => setReactions((prev) => prev.filter((r) => r.id !== id)), REACTION_LIFETIME_MS);
+  }, []);
+
+  const upsertCaption = useCallback((userId: string, text: string, isFinal: boolean) => {
+    const username = userId === myUserIdRef.current ? 'You' : usernamesRef.current.get(userId) || 'Learner';
+    setCaptions((prev) => {
+      const next = new Map(prev);
+      next.set(userId, { userId, username, text, isFinal, updatedAt: Date.now() });
+      return next;
+    });
   }, []);
 
   const createPeerConnection = useCallback(
@@ -258,6 +291,8 @@ export function useWebRTCCall() {
         if (speaking) lastSpokeAtRef.current.set(signal.fromUserId, new Date(signal.createdAt).getTime());
       } else if (signal.type === 'REACTION') {
         if (typeof payload?.emoji === 'string') addReaction(payload.emoji, signal.fromUserId);
+      } else if (signal.type === 'CAPTION') {
+        if (typeof payload?.text === 'string') upsertCaption(signal.fromUserId, payload.text, Boolean(payload.isFinal));
       } else if (signal.type === 'FORCE_MUTE') {
         localStreamRef.current?.getAudioTracks().forEach((t) => (t.enabled = false));
         setMicEnabled(false);
@@ -272,7 +307,7 @@ export function useWebRTCCall() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleOffer, handleAnswer, handleIceCandidate, handleLeave, upsertRemoteParticipant, addReaction]);
+  }, [handleOffer, handleAnswer, handleIceCandidate, handleLeave, upsertRemoteParticipant, addReaction, upsertCaption]);
 
   const applyCallSettingsState = useCallback(
     (state: CallSettingsState) => {
@@ -287,6 +322,8 @@ export function useWebRTCCall() {
       setIsHost(state.isHost);
       setJoinRequests(state.joinRequests);
       setCallStartedAt(state.startedAt);
+      setPhases(state.phases);
+      setCurrentPhaseIndex(state.currentPhaseIndex);
 
       // In structured mode, only the current speaker's mic is actually live — enforced here,
       // not just in the UI, so no one can talk over their turn.
@@ -303,6 +340,20 @@ export function useWebRTCCall() {
 
   const refreshCallState = useCallback(async () => {
     if (!callSessionIdRef.current) return;
+
+    setCaptions((prev) => {
+      const now = Date.now();
+      const next = new Map(prev);
+      let changed = false;
+      for (const [id, line] of prev) {
+        if (now - line.updatedAt > CAPTION_STALE_MS) {
+          next.delete(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+
     const state = await fetchCallState(callSessionIdRef.current).catch(() => null);
     if (!state) return;
 
@@ -454,6 +505,10 @@ export function useWebRTCCall() {
     pollTimerRef.current = null;
     speakingDetectorRef.current?.stop();
     speakingDetectorRef.current = null;
+    captionerRef.current?.stop();
+    captionerRef.current = null;
+    setCaptionsEnabled(false);
+    setCaptions(new Map());
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     localStreamRef.current = null;
     setLocalStream(null);
@@ -487,6 +542,8 @@ export function useWebRTCCall() {
     setIsHost(false);
     setJoinRequests([]);
     setCallStartedAt(null);
+    setPhases(null);
+    setCurrentPhaseIndex(null);
     setMicEnabled(true);
     setCameraEnabled(true);
     setStatus('idle');
@@ -542,6 +599,12 @@ export function useWebRTCCall() {
     [applyCallSettingsState],
   );
 
+  const advancePhase = useCallback(async () => {
+    if (!callSessionIdRef.current) return;
+    const state = await apiAdvancePhase(callSessionIdRef.current).catch(() => null);
+    if (state) applyCallSettingsState(state);
+  }, [applyCallSettingsState]);
+
   const admitJoinRequest = useCallback(async (requesterId: string) => {
     if (!callSessionIdRef.current) return;
     await apiResolveJoinRequest(callSessionIdRef.current, requesterId, 'APPROVE').catch(() => undefined);
@@ -575,6 +638,50 @@ export function useWebRTCCall() {
     [addReaction],
   );
 
+  /** `lang` — a BCP-47 tag (e.g. "en-US") for the caller's own speech. Only transcribes
+   * their own mic; there's no way to caption anyone else's audio without their own
+   * device opting in too. */
+  const toggleCaptions = useCallback(
+    (lang: string) => {
+      if (captionsEnabled) {
+        captionerRef.current?.stop();
+        captionerRef.current = null;
+        setCaptionsEnabled(false);
+        if (myUserIdRef.current) {
+          setCaptions((prev) => {
+            const next = new Map(prev);
+            next.delete(myUserIdRef.current!);
+            return next;
+          });
+        }
+        return;
+      }
+
+      captionerRef.current = createLiveCaptioner(
+        lang,
+        (text, isFinal) => {
+          if (!myUserIdRef.current) return;
+          upsertCaption(myUserIdRef.current, text, isFinal);
+          const now = Date.now();
+          if (!isFinal && now - lastCaptionSentAtRef.current < CAPTION_SEND_THROTTLE_MS) return;
+          lastCaptionSentAtRef.current = now;
+          if (callSessionIdRef.current) {
+            sendCallSignal(callSessionIdRef.current, 'CAPTION', null, { text, isFinal }).catch(() => undefined);
+          }
+        },
+        () => {
+          // Non-fatal — the call itself is fine, captions just aren't available for this
+          // language/browser combination. Fails quiet rather than interrupting the call.
+          setCaptionsEnabled(false);
+          captionerRef.current = null;
+        },
+      );
+      captionerRef.current.start();
+      setCaptionsEnabled(true);
+    },
+    [captionsEnabled, upsertCaption],
+  );
+
   return {
     status,
     error,
@@ -596,6 +703,8 @@ export function useWebRTCCall() {
     isHost,
     joinRequests,
     callStartedAt,
+    phases,
+    currentPhaseIndex,
     join,
     leave,
     toggleMic,
@@ -609,5 +718,10 @@ export function useWebRTCCall() {
     kickParticipant,
     forceMuteParticipant,
     sendReaction,
+    advancePhase,
+    captionsSupported: captionsSupported(),
+    captionsEnabled,
+    captions: Array.from(captions.values()),
+    toggleCaptions,
   };
 }
