@@ -64,12 +64,12 @@ const DebateParticipantsPanel = ({
     if (!silent) setLoading(false);
   }, [channelId]);
 
-  // While the panel is open, poll for new join requests / status changes — a moderator
-  // sitting on this sidebar shouldn't need to close and reopen it to see something new.
+  // Polls continuously, not just while the drawer is open — the trigger button itself
+  // shows the approved/pending counts, so it needs real data before anyone has ever
+  // opened the panel, not just once they do.
   useEffect(() => {
-    if (!isOpen) return;
     load();
-    const interval = setInterval(() => load(true), 4000);
+    const interval = setInterval(() => load(true), isOpen ? 4000 : 8000);
     return () => clearInterval(interval);
   }, [isOpen, load]);
 
