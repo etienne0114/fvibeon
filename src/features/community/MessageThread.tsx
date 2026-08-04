@@ -126,6 +126,7 @@ const ThreadPanel = ({
   messageId,
   channelId,
   isModerator,
+  canReply,
   onClose,
   onRepliesChanged,
 }: {
@@ -133,6 +134,9 @@ const ThreadPanel = ({
   messageId: string | null;
   channelId: string;
   isModerator: boolean;
+  /** False for a space member viewing a debate they haven't been approved into yet —
+   * they can still read the thread, just not post in it (also enforced backend-side). */
+  canReply: boolean;
   onClose: () => void;
   onRepliesChanged: () => void;
 }) => {
@@ -284,6 +288,7 @@ const ThreadPanel = ({
                     ))
                   )}
                 </Stack>
+                {canReply ? (
                 <HStack>
                   <Input
                     placeholder="Reply..."
@@ -323,6 +328,11 @@ const ThreadPanel = ({
                     onClick={sendReply}
                   />
                 </HStack>
+                ) : (
+                  <Text fontSize="xs" color={inkSoft} textAlign="center">
+                    Request to join this debate to reply.
+                  </Text>
+                )}
               </>
             )}
           </DrawerBody>
@@ -415,7 +425,10 @@ export const ChannelThread = ({
     setShowCallPanel(false);
   };
 
-  const canPost = channel.type === 'TEXT' || isModerator || debateStatus === 'APPROVED';
+  // In a debate, only the host (owner/moderator) posts new top-level topics — an approved
+  // participant engages by replying within those threads instead (enforced backend-side too).
+  const canPost = channel.type === 'TEXT' || isModerator;
+  const canReplyOnly = channel.type === 'DEBATE' && !isModerator && debateStatus === 'APPROVED';
 
   const load = useCallback(async () => {
     try {
@@ -666,6 +679,7 @@ export const ChannelThread = ({
         messageId={openThreadMessageId}
         channelId={channel.id}
         isModerator={isModerator}
+        canReply={canPost || canReplyOnly}
         onClose={() => setOpenThreadMessageId(null)}
         onRepliesChanged={load}
       />
@@ -701,6 +715,13 @@ export const ChannelThread = ({
               </Button>
             </HStack>
           )}
+        </Alert>
+      )}
+
+      {canReplyOnly && (
+        <Alert status="info" borderRadius="lg" fontSize="sm">
+          <AlertIcon />
+          You're approved to participate — reply within a topic's thread to join in (open the reply icon on any message above).
         </Alert>
       )}
 
