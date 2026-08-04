@@ -33,8 +33,6 @@ import {
   fetchReplies,
   messageMediaUrl,
   requestToJoinDebate,
-  fetchDebateRequests,
-  fetchApprovedDebateParticipants,
   revokeDebateApproval,
   resolveDebateRequest,
   fetchMyDebateStatus,
@@ -42,7 +40,6 @@ import {
   parseDebatePhases,
   ChannelSummary,
   ChannelMessage,
-  DebateRequest,
 } from '../../api/spaces';
 import { fetchActiveCall, ActiveCall, StartCallSettings } from '../../api/calls';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
@@ -52,6 +49,7 @@ import { useMe } from '../../hooks/useMe';
 import CallPanel from './CallPanel';
 import MeetingSettingsModal from './MeetingSettingsModal';
 import DebateHeader from './DebateHeader';
+import DebateParticipantsPanel from './DebateParticipantsPanel';
 import MessageReactionBar from './MessageReactionBar';
 import { blobToBase64, MAX_UPLOAD_BYTES, ConfirmModal } from './shared';
 import { ink, inkSoft, rose, roseDeep, roseTint, card, line, serif, sage, sageDeep, sageTint, amber, amberDeep, amberTint } from '../../theme/brand';
@@ -151,19 +149,29 @@ const ThreadPanel = ({
   const toast = useToast();
   const { user: me } = useMe();
 
-  const load = useCallback(async () => {
-    if (!messageId) return;
-    try {
-      setLoading(true);
-      const result = await fetchReplies(messageId);
-      setRoot(result.root);
-      setReplies(result.replies);
-    } catch (err: any) {
-      toast({ title: err?.response?.data?.error || 'Could not load thread', status: 'error', duration: 3000, position: 'top' });
-    } finally {
-      setLoading(false);
-    }
-  }, [messageId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(
+    async (silent = false) => {
+      if (!messageId) return;
+      try {
+        if (!silent) setLoading(true);
+        const result = await fetchReplies(messageId);
+        setRoot(result.root);
+        setReplies(result.replies);
+      } catch (err: any) {
+        if (!silent) toast({ title: err?.response?.data?.error || 'Could not load thread', status: 'error', duration: 3000, position: 'top' });
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [messageId], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // Same live-sync as the main channel — a reply someone else posts appears here too.
+  useEffect(() => {
+    if (!isOpen || !messageId) return;
+    const interval = setInterval(() => load(true), 3000);
+    return () => clearInterval(interval);
+  }, [isOpen, messageId, load]);
 
   useEffect(() => {
     if (isOpen && messageId) {
@@ -377,8 +385,7 @@ export const ChannelThread = ({
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [debateStatus, setDebateStatus] = useState<string | null>(null);
-  const [pendingRequests, setPendingRequests] = useState<DebateRequest[]>([]);
-  const [approvedParticipants, setApprovedParticipants] = useState<DebateRequest[]>([]);
+  const [showParticipantsPanel, setShowParticipantsPanel] = useState(false);
   const [confirmDeleteMessageId, setConfirmDeleteMessageId] = useState<string | null>(null);
   const [openThreadMessageId, setOpenThreadMessageId] = useState<string | null>(null);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
@@ -430,32 +437,34 @@ export const ChannelThread = ({
   const canPost = channel.type === 'TEXT' || isModerator;
   const canReplyOnly = channel.type === 'DEBATE' && !isModerator && debateStatus === 'APPROVED';
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const result = await fetchMessages(channel.id);
-      setMessages(result.messages);
-      if (channel.type === 'DEBATE') {
-        const status = await fetchMyDebateStatus(channel.id).catch(() => null);
-        setDebateStatus(status);
-        if (isModerator) {
-          const [requests, participants] = await Promise.all([
-            fetchDebateRequests(channel.id).catch(() => []),
-            fetchApprovedDebateParticipants(channel.id).catch(() => []),
-          ]);
-          setPendingRequests(requests);
-          setApprovedParticipants(participants);
+  const load = useCallback(
+    async (silent = false) => {
+      try {
+        if (!silent) setLoading(true);
+        const result = await fetchMessages(channel.id);
+        setMessages(result.messages);
+        if (channel.type === 'DEBATE') {
+          const status = await fetchMyDebateStatus(channel.id).catch(() => null);
+          setDebateStatus(status);
         }
+      } catch (err: any) {
+        if (!silent) toast({ title: err?.response?.data?.error || 'Could not load channel', status: 'error', duration: 3000, position: 'top' });
+      } finally {
+        if (!silent) setLoading(false);
       }
-    } catch (err: any) {
-      toast({ title: err?.response?.data?.error || 'Could not load channel', status: 'error', duration: 3000, position: 'top' });
-    } finally {
-      setLoading(false);
-    }
-  }, [channel.id, channel.type, isModerator]);
+    },
+    [channel.id, channel.type],
+  );
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // Keeps everyone's view in sync without a manual refresh — a message someone else sends
+  // (or a debate-status change from a moderator's decision) shows up here on its own.
+  useEffect(() => {
+    const interval = setInterval(() => load(true), 3000);
+    return () => clearInterval(interval);
   }, [load]);
 
   const sendText = async () => {
@@ -541,13 +550,11 @@ export const ChannelThread = ({
 
   const resolveRequest = async (requestId: string, approve: boolean, side?: 'FOR' | 'AGAINST') => {
     await resolveDebateRequest(requestId, approve, side).catch(() => undefined);
-    setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
     if (approve) await load();
   };
 
   const revokeApproval = async (requestId: string) => {
     await revokeDebateApproval(requestId).catch(() => undefined);
-    setApprovedParticipants((prev) => prev.filter((r) => r.id !== requestId));
   };
 
   return (
@@ -567,19 +574,33 @@ export const ChannelThread = ({
             </Badge>
           )}
         </HStack>
-        <Button
-          size="sm"
-          borderRadius="full"
-          leftIcon={<Icon as={FiPhoneCall} />}
-          bg={activeCall ? sage : 'transparent'}
-          color={activeCall ? 'white' : inkSoft}
-          variant={activeCall ? 'solid' : 'outline'}
-          borderColor={line}
-          _hover={{ bg: activeCall ? sageDeep : card }}
-          onClick={startOrJoinCall}
-        >
-          {activeCall ? `Join call (${activeCall.participants.length})` : 'Start call'}
-        </Button>
+        <HStack spacing={2}>
+          {isModerator && channel.type === 'DEBATE' && (
+            <DebateParticipantsPanel
+              isOpen={showParticipantsPanel}
+              channelId={channel.id}
+              onOpen={() => setShowParticipantsPanel(true)}
+              onClose={() => setShowParticipantsPanel(false)}
+              onAdmit={(id, side) => resolveRequest(id, true, side)}
+              onDeny={(id) => resolveRequest(id, false)}
+              onRevoke={revokeApproval}
+              hasQuestion={Boolean(channel.debateQuestion)}
+            />
+          )}
+          <Button
+            size="sm"
+            borderRadius="full"
+            leftIcon={<Icon as={FiPhoneCall} />}
+            bg={activeCall ? sage : 'transparent'}
+            color={activeCall ? 'white' : inkSoft}
+            variant={activeCall ? 'solid' : 'outline'}
+            borderColor={line}
+            _hover={{ bg: activeCall ? sageDeep : card }}
+            onClick={startOrJoinCall}
+          >
+            {activeCall ? `Join call (${activeCall.participants.length})` : 'Start call'}
+          </Button>
+        </HStack>
       </HStack>
       {channel.description && (
         <Text fontSize="xs" color={inkSoft}>
@@ -588,67 +609,6 @@ export const ChannelThread = ({
       )}
 
       {channel.type === 'DEBATE' && <DebateHeader channel={channel} />}
-
-      {isModerator && pendingRequests.length > 0 && (
-        <Box bg={amberTint} border="1px solid" borderColor={amber} borderRadius="lg" p={3}>
-          <Text fontSize="xs" fontWeight="700" color={amberDeep} mb={2}>
-            {pendingRequests.length} request{pendingRequests.length === 1 ? '' : 's'} to join this debate
-          </Text>
-          <Stack spacing={1.5}>
-            {pendingRequests.map((r) => (
-              <HStack key={r.id} justify="space-between">
-                <Text fontSize="sm">@{r.user.username}</Text>
-                <HStack spacing={1}>
-                  {channel.debateQuestion ? (
-                    <Menu placement="bottom-end">
-                      <MenuButton as={IconButton} aria-label="Approve" icon={<FiCheck />} size="xs" bg={sage} color="white" _hover={{ bg: sageDeep }} />
-                      <MenuList fontSize="sm" minW="160px">
-                        <MenuItem onClick={() => resolveRequest(r.id, true, 'FOR')}>Approve — For</MenuItem>
-                        <MenuItem onClick={() => resolveRequest(r.id, true, 'AGAINST')}>Approve — Against</MenuItem>
-                        <MenuItem onClick={() => resolveRequest(r.id, true)}>Approve — no side</MenuItem>
-                      </MenuList>
-                    </Menu>
-                  ) : (
-                    <IconButton aria-label="Approve" icon={<FiCheck />} size="xs" bg={sage} color="white" onClick={() => resolveRequest(r.id, true)} />
-                  )}
-                  <IconButton aria-label="Decline" icon={<FiX />} size="xs" bg={rose} color="white" onClick={() => resolveRequest(r.id, false)} />
-                </HStack>
-              </HStack>
-            ))}
-          </Stack>
-        </Box>
-      )}
-
-      {isModerator && approvedParticipants.length > 0 && (
-        <Box bg={sageTint} border="1px solid" borderColor={sage} borderRadius="lg" p={3}>
-          <Text fontSize="xs" fontWeight="700" color={sageDeep} mb={2}>
-            {approvedParticipants.length} approved to participate
-          </Text>
-          <Stack spacing={1.5}>
-            {approvedParticipants.map((r) => (
-              <HStack key={r.id} justify="space-between">
-                <HStack spacing={2}>
-                  <Text fontSize="sm">@{r.user.username}</Text>
-                  {r.side && (
-                    <Badge
-                      fontSize="9px"
-                      borderRadius="full"
-                      px={2}
-                      bg={r.side === 'FOR' ? sageTint : roseTint}
-                      color={r.side === 'FOR' ? sageDeep : roseDeep}
-                    >
-                      {r.side}
-                    </Badge>
-                  )}
-                </HStack>
-                <Button size="xs" variant="outline" borderColor={line} color={inkSoft} onClick={() => revokeApproval(r.id)}>
-                  Revoke
-                </Button>
-              </HStack>
-            ))}
-          </Stack>
-        </Box>
-      )}
 
       <Stack spacing={3} flex={1} overflowY="auto" minH="200px" maxH={{ base: 'calc(100dvh - 260px)', lg: '58vh' }} bg="white" border="1px solid" borderColor={line} borderRadius="xl" p={4}>
         {loading ? (

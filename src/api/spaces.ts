@@ -209,6 +209,11 @@ export async function fetchApprovedDebateParticipants(channelId: string): Promis
   return unwrap(await client.get(`/spaces/channels/${channelId}/debate/participants`));
 }
 
+/** Every request regardless of status (pending/approved/declined) — for the participants sidebar. */
+export async function fetchDebateRoster(channelId: string): Promise<DebateRequest[]> {
+  return unwrap(await client.get(`/spaces/channels/${channelId}/debate/roster`));
+}
+
 export async function revokeDebateApproval(requestId: string) {
   return unwrap(await client.post(`/spaces/debate/requests/${requestId}/revoke`));
 }
