@@ -21,6 +21,7 @@ import {
   MenuList,
   Skeleton,
   Stack,
+  Tooltip,
   Text,
   useToast,
 } from '@chakra-ui/react';
@@ -436,6 +437,9 @@ export const ChannelThread = ({
   // participant engages by replying within those threads instead (enforced backend-side too).
   const canPost = channel.type === 'TEXT' || isModerator;
   const canReplyOnly = channel.type === 'DEBATE' && !isModerator && debateStatus === 'APPROVED';
+  // A debate is moderated by design — only the host decides when a call starts; everyone
+  // else can only join one already running (backend enforces this regardless).
+  const canInitiateCall = channel.type !== 'DEBATE' || isModerator;
 
   const load = useCallback(
     async (silent = false) => {
@@ -587,19 +591,27 @@ export const ChannelThread = ({
               hasQuestion={Boolean(channel.debateQuestion)}
             />
           )}
-          <Button
-            size="sm"
-            borderRadius="full"
-            leftIcon={<Icon as={FiPhoneCall} />}
-            bg={activeCall ? sage : 'transparent'}
-            color={activeCall ? 'white' : inkSoft}
-            variant={activeCall ? 'solid' : 'outline'}
-            borderColor={line}
-            _hover={{ bg: activeCall ? sageDeep : card }}
-            onClick={startOrJoinCall}
+          <Tooltip
+            label="Only the host can start a call here — you can join once they've started one."
+            isDisabled={!canInitiateCall}
+            hasArrow
           >
-            {activeCall ? `Join call (${activeCall.participants.length})` : 'Start call'}
-          </Button>
+            <Button
+              size="sm"
+              borderRadius="full"
+              leftIcon={<Icon as={FiPhoneCall} />}
+              bg={activeCall ? sage : 'transparent'}
+              color={activeCall ? 'white' : inkSoft}
+              variant={activeCall ? 'solid' : 'outline'}
+              borderColor={line}
+              _hover={{ bg: activeCall ? sageDeep : card }}
+              opacity={!activeCall && !canInitiateCall ? 0.5 : 1}
+              cursor={!activeCall && !canInitiateCall ? 'not-allowed' : 'pointer'}
+              onClick={activeCall || canInitiateCall ? startOrJoinCall : undefined}
+            >
+              {activeCall ? `Join call (${activeCall.participants.length})` : 'Start call'}
+            </Button>
+          </Tooltip>
         </HStack>
       </HStack>
       {channel.description && (

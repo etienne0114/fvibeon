@@ -5,7 +5,6 @@ import {
   Avatar,
   Box,
   Button,
-  Grid,
   HStack,
   Icon,
   IconButton,
@@ -160,6 +159,53 @@ const CallPanel = ({
   const focusedParticipants = remoteParticipants.filter((p) => focusedUserIds.has(p.userId));
   const audienceParticipants = remoteParticipants.filter((p) => !focusedUserIds.has(p.userId));
 
+  // Speaker view: whoever's actually talking takes the featured spot; with no one talking,
+  // the organizer (owner/moderator) holds it by default — everyone else sits in a filmstrip.
+  type Tile = { key: string; isMe: boolean; participant?: RemoteParticipant };
+  const focusedTiles: Tile[] = [{ key: 'me', isMe: true }, ...focusedParticipants.map((p) => ({ key: p.userId, isMe: false, participant: p }))];
+
+  let featuredUserId: string | undefined;
+  if (structured && currentSpeaker) {
+    featuredUserId = currentSpeaker.id;
+  } else {
+    const activeSpeakerId = isSpeaking ? myUserId : focusedParticipants.find((p) => p.speaking)?.userId;
+    featuredUserId = activeSpeakerId || (isHost ? myUserId : focusedParticipants.find((p) => p.isOrganizer)?.userId);
+  }
+  const featuredTile = focusedTiles.find((t) => (t.isMe ? t.key === 'me' && featuredUserId === myUserId : t.key === featuredUserId)) || focusedTiles[0];
+  const filmstripTiles = focusedTiles.filter((t) => t !== featuredTile);
+
+  const renderTile = (tile: Tile, minH: string) => {
+    if (tile.isMe) {
+      return (
+        <VideoTile
+          stream={localStream}
+          label={`${myUsername} (you)`}
+          muted
+          cameraOff={!cameraEnabled}
+          micOff={!micEnabled}
+          isSpeaking={isSpeaking}
+          isOrganizer={isHost}
+          minH={minH}
+        />
+      );
+    }
+    const p = tile.participant!;
+    return (
+      <VideoTile
+        stream={p.stream}
+        label={p.username}
+        cameraOff={!p.cameraEnabled || !p.hasVideo}
+        micOff={!p.micEnabled}
+        isSpeaking={remoteIsSpeaking(p)}
+        isOrganizer={p.isOrganizer}
+        minH={minH}
+        canManage={isHost}
+        onKick={() => onKick(p.userId)}
+        onForceMute={() => onForceMute(p.userId)}
+      />
+    );
+  };
+
   const sidebarParticipants: SidebarParticipant[] = [
     { userId: myUserId || 'me', username: `${myUsername} (you)`, micEnabled, cameraEnabled, isSpeaking },
     ...remoteParticipants.map((p) => ({
@@ -283,22 +329,19 @@ const CallPanel = ({
 
               <HStack flex={1} spacing={4} align="stretch" minH={0}>
                 <Box flex={1} overflowY="auto" position="relative">
-                  <Grid templateColumns={{ base: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' }} gap={3}>
-                    <VideoTile stream={localStream} label={`${myUsername} (you)`} muted cameraOff={!cameraEnabled} micOff={!micEnabled} isSpeaking={isSpeaking} />
-                    {focusedParticipants.map((p) => (
-                      <VideoTile
-                        key={p.userId}
-                        stream={p.stream}
-                        label={p.username}
-                        cameraOff={!p.cameraEnabled || !p.hasVideo}
-                        micOff={!p.micEnabled}
-                        isSpeaking={remoteIsSpeaking(p)}
-                        canManage={isHost}
-                        onKick={() => onKick(p.userId)}
-                        onForceMute={() => onForceMute(p.userId)}
-                      />
-                    ))}
-                  </Grid>
+                  <Box maxW="720px" mx="auto" mb={filmstripTiles.length > 0 ? 2 : 0}>
+                    {renderTile(featuredTile, '320px')}
+                  </Box>
+
+                  {filmstripTiles.length > 0 && (
+                    <HStack spacing={2} overflowX="auto" pb={1} justify="center">
+                      {filmstripTiles.map((t) => (
+                        <Box key={t.key} w="140px" flexShrink={0}>
+                          {renderTile(t, '90px')}
+                        </Box>
+                      ))}
+                    </HStack>
+                  )}
 
                   {audienceParticipants.length > 0 && (
                     <Box mt={4}>

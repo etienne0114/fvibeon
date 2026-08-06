@@ -10,6 +10,8 @@ const VideoTile = ({
   cameraOff,
   micOff,
   isSpeaking,
+  isOrganizer,
+  minH = '140px',
   canManage,
   onKick,
   onForceMute,
@@ -20,6 +22,10 @@ const VideoTile = ({
   cameraOff?: boolean;
   micOff?: boolean;
   isSpeaking?: boolean;
+  /** Shows a small "Host" badge — mainly useful on the featured tile, to explain why
+   * they're front-and-center when no one's actively speaking. */
+  isOrganizer?: boolean;
+  minH?: string;
   canManage?: boolean;
   onKick?: () => void;
   onForceMute?: () => void;
@@ -39,7 +45,7 @@ const VideoTile = ({
       borderRadius="lg"
       overflow="hidden"
       aspectRatio="4/3"
-      minH="140px"
+      minH={minH}
       outline={isSpeaking ? '3px solid' : undefined}
       outlineColor={isSpeaking ? sage : undefined}
     >
@@ -67,6 +73,12 @@ const VideoTile = ({
       {isSpeaking && (
         <Badge position="absolute" top={1.5} left={1.5} bg={sageDeep} color="white" fontSize="9px" borderRadius="full" px={2}>
           Speaking
+        </Badge>
+      )}
+
+      {isOrganizer && !isSpeaking && (
+        <Badge position="absolute" top={1.5} left={1.5} bg="blackAlpha.600" color="white" fontSize="9px" borderRadius="full" px={2}>
+          Host
         </Badge>
       )}
 

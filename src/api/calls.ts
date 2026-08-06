@@ -7,6 +7,8 @@ export interface CallParticipant {
   userId: string;
   joinedAt: string;
   user: { id: string; username: string };
+  /** Their space role — lets the client feature the organizer (owner/moderator) by default. */
+  role?: 'OWNER' | 'MODERATOR' | 'MEMBER';
 }
 
 export interface QueuedSpeaker {

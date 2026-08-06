@@ -49,6 +49,8 @@ export interface RemoteParticipant {
    * bandwidth (see focusedUserIds) even while their camera is otherwise on. */
   hasVideo: boolean;
   speaking: boolean;
+  /** Space owner/moderator — the default featured tile when no one's actively speaking. */
+  isOrganizer: boolean;
 }
 
 export interface CallReaction {
@@ -137,6 +139,7 @@ export function useWebRTCCall() {
         cameraEnabled: true,
         hasVideo: false,
         speaking: false,
+        isOrganizer: false,
       };
       const merged = { ...existing, ...patch };
       next.set(userId, merged);
@@ -365,7 +368,7 @@ export function useWebRTCCall() {
     joinOrderRef.current = sorted.map((p) => p.userId);
     for (const p of sorted) {
       usernamesRef.current.set(p.userId, p.user.username);
-      if (!remoteParticipantsRef.current.has(p.userId)) upsertRemoteParticipant(p.userId, {});
+      upsertRemoteParticipant(p.userId, { isOrganizer: p.role === 'OWNER' || p.role === 'MODERATOR' });
     }
 
     applyCallSettingsState(state);
@@ -406,7 +409,7 @@ export function useWebRTCCall() {
 
       for (const p of sorted) {
         usernamesRef.current.set(p.userId, p.user.username);
-        upsertRemoteParticipant(p.userId, {});
+        upsertRemoteParticipant(p.userId, { isOrganizer: p.role === 'OWNER' || p.role === 'MODERATOR' });
         const pc = createPeerConnection(p.userId);
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
