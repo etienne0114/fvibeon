@@ -4,6 +4,7 @@ import {
   AlertIcon,
   Box,
   Button,
+  Flex,
   HStack,
   Icon,
   IconButton,
@@ -51,10 +52,6 @@ const aisleClipPath = {
 // the user provided — narrow top, clearly wider bottom, straight even sides) so the floor
 // reads as a proper trapezoid instead of a subtle, barely-flared sliver.
 const aisleWidth = { base: '380px', sm: '560px', md: '760px' };
-// The floor's length should reach down near the bottom controls, same as the Figma reference —
-// only its WIDTH needed capping (above), not its length. Percentage-of-container height is right
-// here since it's meant to fill the available vertical space down to the control bar.
-const aisleHeight = { base: '86%', md: '84%' };
 
 /* Ticking "Ns left" label for the current speaker's turn — recomputed every second from
    the server-recorded start time, so it stays correct even if this tab was backgrounded. */
@@ -411,54 +408,55 @@ const CallPanel = ({
                     background: 'radial-gradient(ellipse 60% 50% at 50% 0%, rgba(147,112,219,0.28) 0%, rgba(147,112,219,0.06) 55%, transparent 75%)',
                   }}
                 />
-                <Box
-                  position="absolute"
-                  top={{ base: '14%', md: '16%' }}
-                  left="50%"
-                  transform="translateX(-50%)"
-                  w={aisleWidth}
-                  h={aisleHeight}
-                  zIndex={0}
-                  sx={{
-                    clipPath: aisleClipPath,
-                    background: 'linear-gradient(180deg, rgba(147,112,219,0.18) 0%, rgba(88,66,140,0.05) 100%)',
-                  }}
-                />
-                {/* Faint floor-grid texture within the same trapezoid mask — the "professional
-                    perspective floor" touch from the Figma reference. */}
-                <Box
-                  position="absolute"
-                  top={{ base: '14%', md: '16%' }}
-                  left="50%"
-                  transform="translateX(-50%)"
-                  w={aisleWidth}
-                  h={aisleHeight}
-                  zIndex={0}
-                  opacity={0.5}
-                  sx={{
-                    clipPath: aisleClipPath,
-                    backgroundImage:
-                      'repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0, rgba(255,255,255,0.07) 1px, transparent 1px, transparent 12.5%), repeating-linear-gradient(0deg, rgba(255,255,255,0.06) 0, rgba(255,255,255,0.06) 1px, transparent 1px, transparent 16%)',
-                  }}
-                />
 
-                <Stack align="center" spacing={{ base: 3, md: 5 }} position="relative" zIndex={1} py={2}>
-                  <TvFrame>{renderFeatured(featuredTile)}</TvFrame>
+                {/* The floor is a normal-flow sibling directly under TvFrame (not absolutely
+                    positioned against a guessed % of this whole panel's height) so it's always
+                    flush with the TV stand — no drifting gap — and flex={1} makes it fill
+                    exactly the remaining space down to the controls, on any screen height. */}
+                <Flex direction="column" align="center" h="full" position="relative" zIndex={1} py={2}>
+                  <Box flexShrink={0}>
+                    <TvFrame>{renderFeatured(featuredTile)}</TvFrame>
+                  </Box>
 
-                  {aisleTiles.length > 0 && (
-                    <HStack
-                      spacing={{ base: 3, md: 5 }}
-                      flexWrap="wrap"
-                      justify="flex-start"
-                      w={aisleWidth}
-                      pl={{ base: 2, md: 4 }}
-                    >
-                      {aisleTiles.map((t) => (
-                        <Box key={t.key}>{renderBubble(t)}</Box>
-                      ))}
-                    </HStack>
-                  )}
-                </Stack>
+                  <Box position="relative" flex="1" minH={0} w={aisleWidth} mt={{ base: 3, md: 5 }}>
+                    <Box
+                      position="absolute"
+                      inset={0}
+                      sx={{
+                        clipPath: aisleClipPath,
+                        background: 'linear-gradient(180deg, rgba(147,112,219,0.18) 0%, rgba(88,66,140,0.05) 100%)',
+                      }}
+                    />
+                    {/* Faint floor-grid texture within the same trapezoid mask — the "professional
+                        perspective floor" touch from the Figma reference. */}
+                    <Box
+                      position="absolute"
+                      inset={0}
+                      opacity={0.5}
+                      sx={{
+                        clipPath: aisleClipPath,
+                        backgroundImage:
+                          'repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0, rgba(255,255,255,0.07) 1px, transparent 1px, transparent 12.5%), repeating-linear-gradient(0deg, rgba(255,255,255,0.06) 0, rgba(255,255,255,0.06) 1px, transparent 1px, transparent 16%)',
+                      }}
+                    />
+
+                    {aisleTiles.length > 0 && (
+                      <HStack
+                        position="relative"
+                        zIndex={1}
+                        spacing={{ base: 3, md: 5 }}
+                        flexWrap="wrap"
+                        justify="flex-start"
+                        pl={{ base: 2, md: 4 }}
+                        pt={{ base: 2, md: 3 }}
+                      >
+                        {aisleTiles.map((t) => (
+                          <Box key={t.key}>{renderBubble(t)}</Box>
+                        ))}
+                      </HStack>
+                    )}
+                  </Box>
+                </Flex>
 
                 <ReactionOverlay reactions={reactions} />
 
