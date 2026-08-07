@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   Alert,
   AlertIcon,
-  Avatar,
   Box,
   Button,
   HStack,
@@ -19,11 +18,19 @@ import { FiClock, FiMic, FiMicOff, FiPhoneOff, FiSkipForward, FiVideo, FiVideoOf
 import { PiHandPalmFill, PiClosedCaptioningBold } from 'react-icons/pi';
 import { CallReaction, CaptionLine, RemoteParticipant } from '../../hooks/useWebRTCCall';
 import { CallPhase, PendingJoinRequest, QueuedSpeaker, SpeakingMode } from '../../api/calls';
-import { ink, inkSoft, rose, roseDeep, sage, sageDeep, sageTint, card, line, serif } from '../../theme/brand';
+import { rose, roseDeep, sage, sageDeep, serif } from '../../theme/brand';
 import VideoTile from './call/VideoTile';
+import TvFrame from './call/TvFrame';
+import TheaterBubble from './call/TheaterBubble';
 import CallSidebar, { SidebarParticipant } from './call/CallSidebar';
 import CallSettingsPopover from './call/CallSettingsPopover';
 import { ReactionOverlay, ReactionPicker } from './call/ReactionBar';
+
+// A dedicated "theater" look for the call itself — dark, spotlighted aisle, TV-framed
+// featured speaker — distinct from the app's warm cream/ink editorial palette elsewhere.
+const theaterBg = 'linear-gradient(180deg, #14101f 0%, #241a3d 55%, #14101f 100%)';
+const theaterCard = 'whiteAlpha.100';
+const theaterBorder = 'whiteAlpha.200';
 
 /* Ticking "Ns left" label for the current speaker's turn — recomputed every second from
    the server-recorded start time, so it stays correct even if this tab was backgrounded. */
@@ -35,7 +42,7 @@ const SpeakerTimer = ({ startedAt, durationSec }: { startedAt: string; durationS
   }, []);
   const remaining = Math.max(0, durationSec - Math.floor((now - new Date(startedAt).getTime()) / 1000));
   return (
-    <Text fontSize="xs" fontWeight="600" color={remaining <= 10 ? rose : inkSoft}>
+    <Text fontSize="xs" fontWeight="600" color={remaining <= 10 ? rose : 'whiteAlpha.700'}>
       0:{String(remaining).padStart(2, '0')} left
     </Text>
   );
@@ -52,7 +59,7 @@ const CallDuration = ({ startedAt }: { startedAt: string }) => {
   const m = Math.floor(elapsed / 60);
   const s = elapsed % 60;
   return (
-    <Text fontSize="xs" color={inkSoft} sx={{ fontVariantNumeric: 'tabular-nums' }}>
+    <Text fontSize="xs" color="whiteAlpha.700" sx={{ fontVariantNumeric: 'tabular-nums' }}>
       {m}:{String(s).padStart(2, '0')}
     </Text>
   );
@@ -155,14 +162,13 @@ const CallPanel = ({
   const remoteIsSpeaking = (p: RemoteParticipant) => (structured ? currentSpeaker?.id === p.userId : p.speaking);
   // Smart mesh limits: only a bounded "focus" set gets a real video tile — the size of
   // this group is what keeps mesh bandwidth from growing with the square of the call size.
-  // Everyone else is still fully present on audio, just shown as a compact avatar chip.
+  // Everyone else is still fully present on audio, just sits in the aisle without video.
   const focusedParticipants = remoteParticipants.filter((p) => focusedUserIds.has(p.userId));
-  const audienceParticipants = remoteParticipants.filter((p) => !focusedUserIds.has(p.userId));
 
-  // Speaker view: whoever's actually talking takes the featured spot; with no one talking,
-  // the organizer (owner/moderator) holds it by default — everyone else sits in a filmstrip.
+  // Speaker view: whoever's actually talking takes the TV; with no one talking, the
+  // organizer (owner/moderator) holds it by default — everyone else sits in the aisle.
   type Tile = { key: string; isMe: boolean; participant?: RemoteParticipant };
-  const focusedTiles: Tile[] = [{ key: 'me', isMe: true }, ...focusedParticipants.map((p) => ({ key: p.userId, isMe: false, participant: p }))];
+  const allTiles: Tile[] = [{ key: 'me', isMe: true }, ...remoteParticipants.map((p) => ({ key: p.userId, isMe: false, participant: p }))];
 
   let featuredUserId: string | undefined;
   if (structured && currentSpeaker) {
@@ -171,10 +177,10 @@ const CallPanel = ({
     const activeSpeakerId = isSpeaking ? myUserId : focusedParticipants.find((p) => p.speaking)?.userId;
     featuredUserId = activeSpeakerId || (isHost ? myUserId : focusedParticipants.find((p) => p.isOrganizer)?.userId);
   }
-  const featuredTile = focusedTiles.find((t) => (t.isMe ? t.key === 'me' && featuredUserId === myUserId : t.key === featuredUserId)) || focusedTiles[0];
-  const filmstripTiles = focusedTiles.filter((t) => t !== featuredTile);
+  const featuredTile = allTiles.find((t) => (t.isMe ? t.key === 'me' && featuredUserId === myUserId : t.key === featuredUserId)) || allTiles[0];
+  const aisleTiles = allTiles.filter((t) => t !== featuredTile);
 
-  const renderTile = (tile: Tile, minH: string) => {
+  const renderFeatured = (tile: Tile) => {
     if (tile.isMe) {
       return (
         <VideoTile
@@ -185,7 +191,7 @@ const CallPanel = ({
           micOff={!micEnabled}
           isSpeaking={isSpeaking}
           isOrganizer={isHost}
-          minH={minH}
+          minH="320px"
         />
       );
     }
@@ -198,7 +204,37 @@ const CallPanel = ({
         micOff={!p.micEnabled}
         isSpeaking={remoteIsSpeaking(p)}
         isOrganizer={p.isOrganizer}
-        minH={minH}
+        minH="320px"
+        canManage={isHost}
+        onKick={() => onKick(p.userId)}
+        onForceMute={() => onForceMute(p.userId)}
+      />
+    );
+  };
+
+  const renderBubble = (tile: Tile) => {
+    if (tile.isMe) {
+      return (
+        <TheaterBubble
+          stream={localStream}
+          label={`${myUsername} (you)`}
+          muted
+          cameraOff={!cameraEnabled}
+          micOff={!micEnabled}
+          isSpeaking={isSpeaking}
+          isOrganizer={isHost}
+        />
+      );
+    }
+    const p = tile.participant!;
+    return (
+      <TheaterBubble
+        stream={p.stream}
+        label={p.username}
+        cameraOff={!p.cameraEnabled || !p.hasVideo}
+        micOff={!p.micEnabled}
+        isSpeaking={remoteIsSpeaking(p)}
+        isOrganizer={p.isOrganizer}
         canManage={isHost}
         onKick={() => onKick(p.userId)}
         onForceMute={() => onForceMute(p.userId)}
@@ -220,27 +256,27 @@ const CallPanel = ({
   return (
     <Modal isOpen={isOpen} onClose={onLeave} size="full" closeOnOverlayClick={false} closeOnEsc={false}>
       <ModalOverlay />
-      <ModalContent bg={card} m={0} borderRadius={0}>
+      <ModalContent bg={theaterBg} m={0} borderRadius={0}>
         <Stack spacing={0} h="100vh" p={{ base: 3, md: 5 }}>
           {status === 'pending-approval' ? (
             <Stack flex={1} align="center" justify="center" spacing={4}>
-              <Spinner size="lg" color={sageDeep} thickness="3px" />
-              <Text fontFamily={serif} fontSize="lg" color={ink}>
+              <Spinner size="lg" color={sage} thickness="3px" />
+              <Text fontFamily={serif} fontSize="lg" color="white">
                 Waiting for the host to let you in...
               </Text>
               {topic && (
-                <Text fontSize="sm" color={inkSoft}>
+                <Text fontSize="sm" color="whiteAlpha.700">
                   {topic}
                 </Text>
               )}
-              <Button size="sm" variant="outline" borderColor={line} onClick={onLeave}>
+              <Button size="sm" variant="outline" borderColor={theaterBorder} color="white" onClick={onLeave}>
                 Cancel
               </Button>
             </Stack>
           ) : status === 'connecting' ? (
             <Stack flex={1} align="center" justify="center" spacing={4}>
-              <Spinner size="lg" color={sageDeep} thickness="3px" />
-              <Text fontSize="sm" color={inkSoft} textAlign="center">
+              <Spinner size="lg" color={sage} thickness="3px" />
+              <Text fontSize="sm" color="whiteAlpha.700" textAlign="center">
                 Connecting — check your browser's camera/mic permission prompt...
               </Text>
             </Stack>
@@ -250,7 +286,7 @@ const CallPanel = ({
                 <AlertIcon />
                 {error}
               </Alert>
-              <Button size="sm" variant="outline" borderColor={line} onClick={onLeave}>
+              <Button size="sm" variant="outline" borderColor={theaterBorder} color="white" onClick={onLeave}>
                 Close
               </Button>
             </Stack>
@@ -258,16 +294,16 @@ const CallPanel = ({
             <>
               <HStack justify="space-between" pb={3} flexShrink={0}>
                 <HStack spacing={3} minW={0}>
-                  <Text fontFamily={serif} fontWeight="600" fontSize="xl" color={ink} noOfLines={1}>
+                  <Text fontFamily={serif} fontWeight="600" fontSize="xl" color="white" noOfLines={1}>
                     Call in #{channelName}
                   </Text>
                   {topic && (
-                    <Text fontSize="sm" color={inkSoft} noOfLines={1}>
+                    <Text fontSize="sm" color="whiteAlpha.700" noOfLines={1}>
                       · {topic}
                     </Text>
                   )}
                   {structured && (
-                    <Text fontSize="9px" fontWeight="700" bg={sageTint} color={sageDeep} borderRadius="full" px={2} py={0.5} whiteSpace="nowrap">
+                    <Text fontSize="9px" fontWeight="700" bg="whiteAlpha.200" color={sage} borderRadius="full" px={2} py={0.5} whiteSpace="nowrap">
                       {phases && currentPhaseIndex !== null
                         ? `${phases[currentPhaseIndex].name.toUpperCase()} (${currentPhaseIndex + 1}/${phases.length}) · ${speakerTimeSec}S/SPEAKER`
                         : `STRUCTURED · ${speakerTimeSec}S/SPEAKER`}
@@ -276,7 +312,7 @@ const CallPanel = ({
                   {callStartedAt && <CallDuration startedAt={callStartedAt} />}
                 </HStack>
                 <HStack spacing={2} flexShrink={0}>
-                  <Text fontSize="xs" color={inkSoft}>
+                  <Text fontSize="xs" color="whiteAlpha.700">
                     {remoteParticipants.length + 1} in call
                   </Text>
                   {isHost && (
@@ -293,13 +329,13 @@ const CallPanel = ({
               </HStack>
 
               {structured && (
-                <Box bg="white" border="1px solid" borderColor={line} borderRadius="lg" px={3} py={2.5} mb={3} flexShrink={0}>
+                <Box bg={theaterCard} border="1px solid" borderColor={theaterBorder} borderRadius="lg" px={3} py={2.5} mb={3} flexShrink={0}>
                   <HStack justify="space-between" align="flex-start" spacing={3}>
                     <HStack spacing={2}>
-                      <Icon as={FiClock} color={inkSoft} />
+                      <Icon as={FiClock} color="whiteAlpha.700" />
                       {currentSpeaker ? (
                         <HStack spacing={2}>
-                          <Text fontSize="sm" color={ink}>
+                          <Text fontSize="sm" color="white">
                             <Text as="span" fontWeight="700">
                               {currentSpeaker.id === myUserId ? 'You' : currentSpeaker.username}
                             </Text>{' '}
@@ -308,19 +344,26 @@ const CallPanel = ({
                           {currentSpeakerStartedAt && speakerTimeSec && <SpeakerTimer startedAt={currentSpeakerStartedAt} durationSec={speakerTimeSec} />}
                         </HStack>
                       ) : (
-                        <Text fontSize="sm" color={inkSoft}>
+                        <Text fontSize="sm" color="whiteAlpha.700">
                           No one is speaking — raise your hand to start.
                         </Text>
                       )}
                     </HStack>
                     <HStack spacing={1}>
                       {isHost && phases && currentPhaseIndex !== null && currentPhaseIndex < phases.length - 1 && (
-                        <Button size="xs" variant="outline" borderColor={sage} color={sageDeep} onClick={onAdvancePhase}>
+                        <Button size="xs" variant="outline" borderColor={sage} color={sage} onClick={onAdvancePhase}>
                           Next: {phases[currentPhaseIndex + 1].name}
                         </Button>
                       )}
                       {isHost && currentSpeaker && (
-                        <IconButton aria-label="Skip to next speaker" icon={<Icon as={FiSkipForward} />} size="xs" variant="ghost" onClick={onSkipSpeaker} />
+                        <IconButton
+                          aria-label="Skip to next speaker"
+                          icon={<Icon as={FiSkipForward} />}
+                          size="xs"
+                          variant="ghost"
+                          color="whiteAlpha.700"
+                          onClick={onSkipSpeaker}
+                        />
                       )}
                     </HStack>
                   </HStack>
@@ -328,50 +371,41 @@ const CallPanel = ({
               )}
 
               <HStack flex={1} spacing={4} align="stretch" minH={0}>
-                <Box flex={1} overflowY="auto" position="relative">
-                  <Box maxW="720px" mx="auto" mb={filmstripTiles.length > 0 ? 2 : 0}>
-                    {renderTile(featuredTile, '320px')}
-                  </Box>
+                <Box flex={1} overflowY="auto" position="relative" borderRadius="xl" overflow="hidden">
+                  {/* The spotlighted aisle backdrop — purely atmospheric, sits behind everything. */}
+                  <Box
+                    position="absolute"
+                    inset={0}
+                    zIndex={0}
+                    sx={{
+                      background: 'radial-gradient(ellipse 60% 50% at 50% 0%, rgba(147,112,219,0.28) 0%, rgba(147,112,219,0.06) 55%, transparent 75%)',
+                    }}
+                  />
+                  <Box
+                    position="absolute"
+                    top="18%"
+                    left="50%"
+                    transform="translateX(-50%)"
+                    w="70%"
+                    h="82%"
+                    zIndex={0}
+                    sx={{
+                      clipPath: 'polygon(38% 0%, 62% 0%, 100% 100%, 0% 100%)',
+                      background: 'linear-gradient(180deg, rgba(147,112,219,0.16) 0%, rgba(88,66,140,0.04) 100%)',
+                    }}
+                  />
 
-                  {filmstripTiles.length > 0 && (
-                    <HStack spacing={2} overflowX="auto" pb={1} justify="center">
-                      {filmstripTiles.map((t) => (
-                        <Box key={t.key} w="140px" flexShrink={0}>
-                          {renderTile(t, '90px')}
-                        </Box>
-                      ))}
-                    </HStack>
-                  )}
+                  <Stack align="center" spacing={5} position="relative" zIndex={1} py={2}>
+                    <TvFrame>{renderFeatured(featuredTile)}</TvFrame>
 
-                  {audienceParticipants.length > 0 && (
-                    <Box mt={4}>
-                      <Text fontSize="xs" fontWeight="700" color={inkSoft} textTransform="uppercase" letterSpacing="0.05em" mb={2}>
-                        Also here — audio only ({audienceParticipants.length})
-                      </Text>
-                      <HStack spacing={3} flexWrap="wrap">
-                        {audienceParticipants.map((p) => (
-                          <Stack key={p.userId} spacing={1} align="center" w="64px">
-                            <Box position="relative">
-                              <Avatar
-                                size="md"
-                                name={p.username}
-                                outline={remoteIsSpeaking(p) ? '3px solid' : undefined}
-                                outlineColor={remoteIsSpeaking(p) ? sage : undefined}
-                              />
-                              {!p.micEnabled && (
-                                <Box position="absolute" bottom={0} right={0} bg={rose} borderRadius="full" p={0.5}>
-                                  <Icon as={FiMicOff} color="white" boxSize={2.5} />
-                                </Box>
-                              )}
-                            </Box>
-                            <Text fontSize="10px" color={inkSoft} noOfLines={1} textAlign="center" w="full">
-                              {p.username}
-                            </Text>
-                          </Stack>
+                    {aisleTiles.length > 0 && (
+                      <HStack spacing={5} flexWrap="wrap" justify="center" maxW="90%">
+                        {aisleTiles.map((t) => (
+                          <Box key={t.key}>{renderBubble(t)}</Box>
                         ))}
                       </HStack>
-                    </Box>
-                  )}
+                    )}
+                  </Stack>
 
                   <ReactionOverlay reactions={reactions} />
 
@@ -406,7 +440,7 @@ const CallPanel = ({
                 />
               </HStack>
 
-              <HStack justify="center" spacing={3} pt={3} mt={2} borderTop="1px solid" borderColor={line} flexShrink={0}>
+              <HStack justify="center" spacing={3} pt={3} mt={2} borderTop="1px solid" borderColor={theaterBorder} flexShrink={0}>
                 {structured ? (
                   <Button
                     leftIcon={<Icon as={PiHandPalmFill} />}
@@ -414,10 +448,10 @@ const CallPanel = ({
                     size="lg"
                     px={5}
                     bg={handActive ? sage : 'white'}
-                    color={handActive ? 'white' : ink}
+                    color={handActive ? 'white' : '#2E1F26'}
                     border="1px solid"
-                    borderColor={handActive ? sage : line}
-                    _hover={{ bg: handActive ? sageDeep : card }}
+                    borderColor={handActive ? sage : theaterBorder}
+                    _hover={{ bg: handActive ? sageDeep : 'whiteAlpha.900' }}
                     onClick={handActive ? onLowerHand : onRaiseHand}
                   >
                     {isSpeaking ? 'Done speaking' : inQueue ? 'Lower hand' : 'Raise hand'}
@@ -429,9 +463,7 @@ const CallPanel = ({
                     borderRadius="full"
                     size="lg"
                     bg={micEnabled ? 'white' : rose}
-                    color={micEnabled ? ink : 'white'}
-                    border="1px solid"
-                    borderColor={line}
+                    color={micEnabled ? '#2E1F26' : 'white'}
                     onClick={onToggleMic}
                   />
                 )}
@@ -441,9 +473,7 @@ const CallPanel = ({
                   borderRadius="full"
                   size="lg"
                   bg={cameraEnabled ? 'white' : rose}
-                  color={cameraEnabled ? ink : 'white'}
-                  border="1px solid"
-                  borderColor={line}
+                  color={cameraEnabled ? '#2E1F26' : 'white'}
                   onClick={onToggleCamera}
                 />
                 {captionsSupported && (
@@ -453,9 +483,7 @@ const CallPanel = ({
                     borderRadius="full"
                     size="lg"
                     bg={captionsEnabled ? sage : 'white'}
-                    color={captionsEnabled ? 'white' : ink}
-                    border="1px solid"
-                    borderColor={captionsEnabled ? sage : line}
+                    color={captionsEnabled ? 'white' : '#2E1F26'}
                     onClick={onToggleCaptions}
                   />
                 )}
