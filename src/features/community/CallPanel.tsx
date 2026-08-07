@@ -47,9 +47,10 @@ const aisleClipPath = {
 // on narrow phones but went flat and let bubbles spill outside the spotlight entirely on wide
 // desktop screens, since the container (up to the full modal width) grew much faster than the
 // TV frame does. Pinning to a fixed multiple of the TV width keeps the same proportions everywhere.
-// Kept close to TvFrame's own width (1.5x) so the floor reads as "in front of the TV", not a
-// separate wide stage that dwarfs it.
-const aisleWidth = { base: '285px', sm: '420px', md: '570px' };
+// Bottom edge is exactly 2x TvFrame's own width (matching the plain reference trapezoid shape
+// the user provided — narrow top, clearly wider bottom, straight even sides) so the floor
+// reads as a proper trapezoid instead of a subtle, barely-flared sliver.
+const aisleWidth = { base: '380px', sm: '560px', md: '760px' };
 // The floor's length should reach down near the bottom controls, same as the Figma reference —
 // only its WIDTH needed capping (above), not its length. Percentage-of-container height is right
 // here since it's meant to fill the available vertical space down to the control bar.
