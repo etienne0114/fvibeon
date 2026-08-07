@@ -30,6 +30,9 @@ import { ReactionOverlay, ReactionPicker } from './call/ReactionBar';
 // featured speaker — distinct from the app's warm cream/ink editorial palette elsewhere.
 const theaterBg = 'linear-gradient(180deg, #14101f 0%, #241a3d 55%, #14101f 100%)';
 const theaterCard = 'whiteAlpha.100';
+// Matches TvFrame's own responsive width (roughly 4:3) so the featured tile's height
+// never gets stretched taller than its frame by an oversized fixed minH floor.
+const featuredMinH = { base: '140px', sm: '210px', md: '280px' };
 const theaterBorder = 'whiteAlpha.200';
 
 /* Ticking "Ns left" label for the current speaker's turn — recomputed every second from
@@ -191,7 +194,7 @@ const CallPanel = ({
           micOff={!micEnabled}
           isSpeaking={isSpeaking}
           isOrganizer={isHost}
-          minH="320px"
+          minH={featuredMinH}
         />
       );
     }
@@ -204,7 +207,7 @@ const CallPanel = ({
         micOff={!p.micEnabled}
         isSpeaking={remoteIsSpeaking(p)}
         isOrganizer={p.isOrganizer}
-        minH="320px"
+        minH={featuredMinH}
         canManage={isHost}
         onKick={() => onKick(p.userId)}
         onForceMute={() => onForceMute(p.userId)}
@@ -292,13 +295,13 @@ const CallPanel = ({
             </Stack>
           ) : (
             <>
-              <HStack justify="space-between" pb={3} flexShrink={0}>
-                <HStack spacing={3} minW={0}>
-                  <Text fontFamily={serif} fontWeight="600" fontSize="xl" color="white" noOfLines={1}>
+              <HStack justify="space-between" align="flex-start" pb={3} flexShrink={0} flexWrap="wrap" rowGap={2}>
+                <HStack spacing={2} minW={0} flexWrap="wrap" rowGap={1}>
+                  <Text fontFamily={serif} fontWeight="600" fontSize={{ base: 'md', md: 'xl' }} color="white" noOfLines={1}>
                     Call in #{channelName}
                   </Text>
                   {topic && (
-                    <Text fontSize="sm" color="whiteAlpha.700" noOfLines={1}>
+                    <Text fontSize={{ base: 'xs', md: 'sm' }} color="whiteAlpha.700" noOfLines={1}>
                       · {topic}
                     </Text>
                   )}
@@ -311,10 +314,17 @@ const CallPanel = ({
                   )}
                   {callStartedAt && <CallDuration startedAt={callStartedAt} />}
                 </HStack>
-                <HStack spacing={2} flexShrink={0}>
-                  <Text fontSize="xs" color="whiteAlpha.700">
-                    {remoteParticipants.length + 1} in call
-                  </Text>
+                <HStack spacing={1} flexShrink={0}>
+                  <CallSidebar
+                    participants={sidebarParticipants}
+                    myUserId={myUserId}
+                    isHost={isHost}
+                    joinRequests={joinRequests}
+                    onAdmit={onAdmit}
+                    onDeny={onDeny}
+                    onKick={onKick}
+                    onForceMute={onForceMute}
+                  />
                   {isHost && (
                     <CallSettingsPopover
                       speakingMode={speakingMode}
@@ -370,75 +380,62 @@ const CallPanel = ({
                 </Box>
               )}
 
-              <HStack flex={1} spacing={4} align="stretch" minH={0}>
-                <Box flex={1} overflowY="auto" position="relative" borderRadius="xl" overflow="hidden">
-                  {/* The spotlighted aisle backdrop — purely atmospheric, sits behind everything. */}
-                  <Box
-                    position="absolute"
-                    inset={0}
-                    zIndex={0}
-                    sx={{
-                      background: 'radial-gradient(ellipse 60% 50% at 50% 0%, rgba(147,112,219,0.28) 0%, rgba(147,112,219,0.06) 55%, transparent 75%)',
-                    }}
-                  />
-                  <Box
-                    position="absolute"
-                    top="18%"
-                    left="50%"
-                    transform="translateX(-50%)"
-                    w="70%"
-                    h="82%"
-                    zIndex={0}
-                    sx={{
-                      clipPath: 'polygon(38% 0%, 62% 0%, 100% 100%, 0% 100%)',
-                      background: 'linear-gradient(180deg, rgba(147,112,219,0.16) 0%, rgba(88,66,140,0.04) 100%)',
-                    }}
-                  />
-
-                  <Stack align="center" spacing={5} position="relative" zIndex={1} py={2}>
-                    <TvFrame>{renderFeatured(featuredTile)}</TvFrame>
-
-                    {aisleTiles.length > 0 && (
-                      <HStack spacing={5} flexWrap="wrap" justify="center" maxW="90%">
-                        {aisleTiles.map((t) => (
-                          <Box key={t.key}>{renderBubble(t)}</Box>
-                        ))}
-                      </HStack>
-                    )}
-                  </Stack>
-
-                  <ReactionOverlay reactions={reactions} />
-
-                  {captions.length > 0 && (
-                    <Stack position="absolute" bottom={2} left="50%" transform="translateX(-50%)" spacing={1} maxW="90%" align="center" pointerEvents="none">
-                      {[...captions]
-                        .sort((a, b) => a.updatedAt - b.updatedAt)
-                        .slice(-2)
-                        .map((c) => (
-                          <Box key={c.userId} bg="blackAlpha.750" borderRadius="md" px={3} py={1.5}>
-                            <Text fontSize="sm" color="white" textAlign="center">
-                              <Text as="span" fontWeight="700">
-                                {c.username}:
-                              </Text>{' '}
-                              {c.text}
-                            </Text>
-                          </Box>
-                        ))}
-                    </Stack>
-                  )}
-                </Box>
-
-                <CallSidebar
-                  participants={sidebarParticipants}
-                  myUserId={myUserId}
-                  isHost={isHost}
-                  joinRequests={joinRequests}
-                  onAdmit={onAdmit}
-                  onDeny={onDeny}
-                  onKick={onKick}
-                  onForceMute={onForceMute}
+              <Box flex={1} overflowY="auto" position="relative" borderRadius="xl" overflow="hidden">
+                {/* The spotlighted aisle backdrop — purely atmospheric, sits behind everything. */}
+                <Box
+                  position="absolute"
+                  inset={0}
+                  zIndex={0}
+                  sx={{
+                    background: 'radial-gradient(ellipse 60% 50% at 50% 0%, rgba(147,112,219,0.28) 0%, rgba(147,112,219,0.06) 55%, transparent 75%)',
+                  }}
                 />
-              </HStack>
+                <Box
+                  position="absolute"
+                  top="18%"
+                  left="50%"
+                  transform="translateX(-50%)"
+                  w="70%"
+                  h="82%"
+                  zIndex={0}
+                  sx={{
+                    clipPath: 'polygon(38% 0%, 62% 0%, 100% 100%, 0% 100%)',
+                    background: 'linear-gradient(180deg, rgba(147,112,219,0.16) 0%, rgba(88,66,140,0.04) 100%)',
+                  }}
+                />
+
+                <Stack align="center" spacing={{ base: 3, md: 5 }} position="relative" zIndex={1} py={2}>
+                  <TvFrame>{renderFeatured(featuredTile)}</TvFrame>
+
+                  {aisleTiles.length > 0 && (
+                    <HStack spacing={{ base: 3, md: 5 }} flexWrap="wrap" justify="center" maxW="90%">
+                      {aisleTiles.map((t) => (
+                        <Box key={t.key}>{renderBubble(t)}</Box>
+                      ))}
+                    </HStack>
+                  )}
+                </Stack>
+
+                <ReactionOverlay reactions={reactions} />
+
+                {captions.length > 0 && (
+                  <Stack position="absolute" bottom={2} left="50%" transform="translateX(-50%)" spacing={1} maxW="90%" align="center" pointerEvents="none">
+                    {[...captions]
+                      .sort((a, b) => a.updatedAt - b.updatedAt)
+                      .slice(-2)
+                      .map((c) => (
+                        <Box key={c.userId} bg="blackAlpha.750" borderRadius="md" px={3} py={1.5}>
+                          <Text fontSize="sm" color="white" textAlign="center">
+                            <Text as="span" fontWeight="700">
+                              {c.username}:
+                            </Text>{' '}
+                            {c.text}
+                          </Text>
+                        </Box>
+                      ))}
+                  </Stack>
+                )}
+              </Box>
 
               <HStack justify="center" spacing={3} pt={3} mt={2} borderTop="1px solid" borderColor={theaterBorder} flexShrink={0}>
                 {structured ? (

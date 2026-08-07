@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { Badge, Box, Circle, Icon, Menu, MenuButton, MenuItem, MenuList, Stack, Text } from '@chakra-ui/react';
+import { Badge, Box, Circle, Icon, Menu, MenuButton, MenuItem, MenuList, ResponsiveValue, Stack, Text } from '@chakra-ui/react';
 import { FiMicOff, FiMoreVertical, FiUserX, FiVolumeX } from 'react-icons/fi';
 import { rose, roseDeep, sage, serif } from '../../../theme/brand';
+
+const DEFAULT_SIZE: ResponsiveValue<string> = { base: '52px', sm: '64px', md: '76px' };
 
 /* A member's spot in the aisle — small circular video/avatar bubble with their name in a
    pill underneath, matching the theater layout's look. Same prop shape as VideoTile so the
@@ -14,7 +16,7 @@ const TheaterBubble = ({
   micOff,
   isSpeaking,
   isOrganizer,
-  size = '76px',
+  size = DEFAULT_SIZE,
   canManage,
   onKick,
   onForceMute,
@@ -26,7 +28,7 @@ const TheaterBubble = ({
   micOff?: boolean;
   isSpeaking?: boolean;
   isOrganizer?: boolean;
-  size?: string;
+  size?: ResponsiveValue<string>;
   canManage?: boolean;
   onKick?: () => void;
   onForceMute?: () => void;

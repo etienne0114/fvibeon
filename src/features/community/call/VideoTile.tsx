@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Badge, Box, Circle, HStack, Icon, Menu, MenuButton, MenuItem, MenuList, Text } from '@chakra-ui/react';
+import { Badge, Box, Circle, HStack, Icon, Menu, MenuButton, MenuItem, MenuList, ResponsiveValue, Text } from '@chakra-ui/react';
 import { FiMicOff, FiMoreVertical, FiUserX, FiVolumeX } from 'react-icons/fi';
 import { ink, inkSoft, roseDeep, sage, sageDeep, serif } from '../../../theme/brand';
 
@@ -25,7 +25,7 @@ const VideoTile = ({
   /** Shows a small "Host" badge — mainly useful on the featured tile, to explain why
    * they're front-and-center when no one's actively speaking. */
   isOrganizer?: boolean;
-  minH?: string;
+  minH?: ResponsiveValue<string>;
   canManage?: boolean;
   onKick?: () => void;
   onForceMute?: () => void;
