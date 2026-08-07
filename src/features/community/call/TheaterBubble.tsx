@@ -3,7 +3,9 @@ import { Badge, Box, Circle, Icon, Menu, MenuButton, MenuItem, MenuList, Respons
 import { FiMicOff, FiMoreVertical, FiUserX, FiVolumeX } from 'react-icons/fi';
 import { rose, roseDeep, sage, serif } from '../../../theme/brand';
 
-const DEFAULT_SIZE: ResponsiveValue<string> = { base: '60px', sm: '72px', md: '84px' };
+// Smaller than the earlier pass — several of these need to sit comfortably side by side within
+// the aisle floor's width without crowding or wrapping onto extra rows too quickly.
+const DEFAULT_SIZE: ResponsiveValue<string> = { base: '44px', sm: '54px', md: '64px' };
 
 /* A member's spot in the aisle — small circular video/avatar bubble with their name in a
    pill underneath, matching the theater layout's look. Same prop shape as VideoTile so the
