@@ -47,7 +47,13 @@ const aisleClipPath = {
 // on narrow phones but went flat and let bubbles spill outside the spotlight entirely on wide
 // desktop screens, since the container (up to the full modal width) grew much faster than the
 // TV frame does. Pinning to a fixed multiple of the TV width keeps the same proportions everywhere.
-const aisleWidth = { base: '366px', sm: '540px', md: '720px' };
+// Kept close to TvFrame's own width (1.5x) so the floor reads as "in front of the TV", not a
+// separate wide stage that dwarfs it.
+const aisleWidth = { base: '285px', sm: '420px', md: '570px' };
+// Fixed height too — a percentage of the (often tall) call container stretched the empty floor
+// almost down to the control bar, reading as an endless purple hallway. Capping it keeps the
+// floor a contained shape right under the TV instead.
+const aisleHeight = { base: '320px', sm: '400px', md: '480px' };
 
 /* Ticking "Ns left" label for the current speaker's turn — recomputed every second from
    the server-recorded start time, so it stays correct even if this tab was backgrounded. */
@@ -410,7 +416,7 @@ const CallPanel = ({
                   left="50%"
                   transform="translateX(-50%)"
                   w={aisleWidth}
-                  h={{ base: '86%', md: '84%' }}
+                  h={aisleHeight}
                   zIndex={0}
                   sx={{
                     clipPath: aisleClipPath,
@@ -425,7 +431,7 @@ const CallPanel = ({
                   left="50%"
                   transform="translateX(-50%)"
                   w={aisleWidth}
-                  h={{ base: '86%', md: '84%' }}
+                  h={aisleHeight}
                   zIndex={0}
                   opacity={0.5}
                   sx={{
