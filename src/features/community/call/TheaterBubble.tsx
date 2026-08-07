@@ -3,7 +3,7 @@ import { Badge, Box, Circle, Icon, Menu, MenuButton, MenuItem, MenuList, Respons
 import { FiMicOff, FiMoreVertical, FiUserX, FiVolumeX } from 'react-icons/fi';
 import { rose, roseDeep, sage, serif } from '../../../theme/brand';
 
-const DEFAULT_SIZE: ResponsiveValue<string> = { base: '52px', sm: '64px', md: '76px' };
+const DEFAULT_SIZE: ResponsiveValue<string> = { base: '60px', sm: '72px', md: '84px' };
 
 /* A member's spot in the aisle — small circular video/avatar bubble with their name in a
    pill underneath, matching the theater layout's look. Same prop shape as VideoTile so the
@@ -48,9 +48,9 @@ const TheaterBubble = ({
           size={size}
           overflow="hidden"
           bg="whiteAlpha.200"
-          outline={isSpeaking ? '3px solid' : '2px solid'}
-          outlineColor={isSpeaking ? sage : 'whiteAlpha.400'}
-          boxShadow={isSpeaking ? '0 0 18px 3px rgba(127,169,155,0.55)' : 'none'}
+          outline={isSpeaking ? '3px solid' : '2.5px solid'}
+          outlineColor={isSpeaking ? sage : 'white'}
+          boxShadow={isSpeaking ? '0 0 18px 3px rgba(127,169,155,0.55)' : '0 3px 12px rgba(0,0,0,0.45)'}
           transition="box-shadow 0.2s, outline-color 0.2s"
         >
           {hasVideoTrack && !cameraOff ? (
@@ -115,7 +115,7 @@ const TheaterBubble = ({
         )}
       </Box>
 
-      <Text fontSize="xs" color="white" bg="whiteAlpha.200" px={2} py={0.5} borderRadius="full" noOfLines={1} maxW="full">
+      <Text fontSize="xs" fontWeight="600" color="white" bg="blackAlpha.700" px={2} py={0.5} borderRadius="full" noOfLines={1} maxW="full">
         {label}
       </Text>
     </Stack>
