@@ -35,14 +35,12 @@ const theaterCard = 'whiteAlpha.100';
 // never gets stretched taller than its frame by an oversized fixed minH floor.
 const featuredMinH = { base: '140px', sm: '210px', md: '280px' };
 const theaterBorder = 'whiteAlpha.200';
-// The aisle trapezoid's narrow top edge, pinned to exactly half of TvFrame's own responsive
-// width (190/280/380px) so the spotlight starts flush with the TV stand instead of a
-// mismatched sliver — the rest of the polygon flares out to the box's full width/height.
-const aisleClipPath = {
-  base: 'polygon(calc(50% - 95px) 0%, calc(50% + 95px) 0%, 100% 100%, 0% 100%)',
-  sm: 'polygon(calc(50% - 140px) 0%, calc(50% + 140px) 0%, 100% 100%, 0% 100%)',
-  md: 'polygon(calc(50% - 190px) 0%, calc(50% + 190px) 0%, 100% 100%, 0% 100%)',
-};
+// The aisle trapezoid's top edge, as a percentage of the floor box's own width (not a fixed
+// px tied to TvFrame) so it scales identically on every breakpoint. Widened to 70% — pinning
+// it to the TV's exact width made the top too narrow to contain the aisle bubble row (which is
+// padded in from the box's much-wider bottom edge), letting bubbles spill into the plain
+// background beside the visible purple floor. 70% keeps a clear taper while safely containing them.
+const aisleClipPath = 'polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%)';
 // Fixed pixel width for the aisle backdrop and the bubble row beneath it — sized to the same
 // ratio as TvFrame's own width at each breakpoint. A percentage-of-container width looked fine
 // on narrow phones but went flat and let bubbles spill outside the spotlight entirely on wide
