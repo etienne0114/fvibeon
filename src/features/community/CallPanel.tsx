@@ -34,6 +34,14 @@ const theaterCard = 'whiteAlpha.100';
 // never gets stretched taller than its frame by an oversized fixed minH floor.
 const featuredMinH = { base: '140px', sm: '210px', md: '280px' };
 const theaterBorder = 'whiteAlpha.200';
+// The aisle trapezoid's narrow top edge, pinned to exactly half of TvFrame's own responsive
+// width (190/280/380px) so the spotlight starts flush with the TV stand instead of a
+// mismatched sliver — the rest of the polygon flares out to the box's full width/height.
+const aisleClipPath = {
+  base: 'polygon(calc(50% - 95px) 0%, calc(50% + 95px) 0%, 100% 100%, 0% 100%)',
+  sm: 'polygon(calc(50% - 140px) 0%, calc(50% + 140px) 0%, 100% 100%, 0% 100%)',
+  md: 'polygon(calc(50% - 190px) 0%, calc(50% + 190px) 0%, 100% 100%, 0% 100%)',
+};
 
 /* Ticking "Ns left" label for the current speaker's turn — recomputed every second from
    the server-recorded start time, so it stays correct even if this tab was backgrounded. */
@@ -399,7 +407,7 @@ const CallPanel = ({
                   h={{ base: '86%', md: '84%' }}
                   zIndex={0}
                   sx={{
-                    clipPath: 'polygon(40% 0%, 60% 0%, 100% 100%, 0% 100%)',
+                    clipPath: aisleClipPath,
                     background: 'linear-gradient(180deg, rgba(147,112,219,0.18) 0%, rgba(88,66,140,0.05) 100%)',
                   }}
                 />
@@ -415,7 +423,7 @@ const CallPanel = ({
                   zIndex={0}
                   opacity={0.5}
                   sx={{
-                    clipPath: 'polygon(40% 0%, 60% 0%, 100% 100%, 0% 100%)',
+                    clipPath: aisleClipPath,
                     backgroundImage:
                       'repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0, rgba(255,255,255,0.07) 1px, transparent 1px, transparent 12.5%), repeating-linear-gradient(0deg, rgba(255,255,255,0.06) 0, rgba(255,255,255,0.06) 1px, transparent 1px, transparent 16%)',
                   }}
