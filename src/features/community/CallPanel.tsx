@@ -392,15 +392,32 @@ const CallPanel = ({
                 />
                 <Box
                   position="absolute"
-                  top="18%"
+                  top={{ base: '14%', md: '16%' }}
                   left="50%"
                   transform="translateX(-50%)"
-                  w="70%"
-                  h="82%"
+                  w={{ base: '94%', sm: '90%', md: '85%' }}
+                  h={{ base: '86%', md: '84%' }}
                   zIndex={0}
                   sx={{
-                    clipPath: 'polygon(38% 0%, 62% 0%, 100% 100%, 0% 100%)',
-                    background: 'linear-gradient(180deg, rgba(147,112,219,0.16) 0%, rgba(88,66,140,0.04) 100%)',
+                    clipPath: 'polygon(40% 0%, 60% 0%, 100% 100%, 0% 100%)',
+                    background: 'linear-gradient(180deg, rgba(147,112,219,0.18) 0%, rgba(88,66,140,0.05) 100%)',
+                  }}
+                />
+                {/* Faint floor-grid texture within the same trapezoid mask — the "professional
+                    perspective floor" touch from the Figma reference. */}
+                <Box
+                  position="absolute"
+                  top={{ base: '14%', md: '16%' }}
+                  left="50%"
+                  transform="translateX(-50%)"
+                  w={{ base: '94%', sm: '90%', md: '85%' }}
+                  h={{ base: '86%', md: '84%' }}
+                  zIndex={0}
+                  opacity={0.5}
+                  sx={{
+                    clipPath: 'polygon(40% 0%, 60% 0%, 100% 100%, 0% 100%)',
+                    backgroundImage:
+                      'repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0, rgba(255,255,255,0.07) 1px, transparent 1px, transparent 12.5%), repeating-linear-gradient(0deg, rgba(255,255,255,0.06) 0, rgba(255,255,255,0.06) 1px, transparent 1px, transparent 16%)',
                   }}
                 />
 
@@ -408,7 +425,13 @@ const CallPanel = ({
                   <TvFrame>{renderFeatured(featuredTile)}</TvFrame>
 
                   {aisleTiles.length > 0 && (
-                    <HStack spacing={{ base: 3, md: 5 }} flexWrap="wrap" justify="center" maxW="90%">
+                    <HStack
+                      spacing={{ base: 3, md: 5 }}
+                      flexWrap="wrap"
+                      justify="flex-start"
+                      w={{ base: '92%', sm: '88%', md: '82%' }}
+                      pl={{ base: 2, md: 4 }}
+                    >
                       {aisleTiles.map((t) => (
                         <Box key={t.key}>{renderBubble(t)}</Box>
                       ))}
