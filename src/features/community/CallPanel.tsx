@@ -50,10 +50,10 @@ const aisleClipPath = {
 // Kept close to TvFrame's own width (1.5x) so the floor reads as "in front of the TV", not a
 // separate wide stage that dwarfs it.
 const aisleWidth = { base: '285px', sm: '420px', md: '570px' };
-// Fixed height too — a percentage of the (often tall) call container stretched the empty floor
-// almost down to the control bar, reading as an endless purple hallway. Capping it keeps the
-// floor a contained shape right under the TV instead.
-const aisleHeight = { base: '320px', sm: '400px', md: '480px' };
+// The floor's length should reach down near the bottom controls, same as the Figma reference —
+// only its WIDTH needed capping (above), not its length. Percentage-of-container height is right
+// here since it's meant to fill the available vertical space down to the control bar.
+const aisleHeight = { base: '86%', md: '84%' };
 
 /* Ticking "Ns left" label for the current speaker's turn — recomputed every second from
    the server-recorded start time, so it stays correct even if this tab was backgrounded. */
