@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  Avatar,
   Badge,
   Box,
   Button,
-  Circle,
   Divider,
   Flex,
   FormControl,
@@ -40,15 +40,20 @@ import {
   FiCalendar,
   FiChevronDown,
   FiShield,
+  FiCamera,
+  FiTrash2,
 } from 'react-icons/fi';
 import { MeUser } from '../../../hooks/useMe';
 import { DashboardSummary } from '../../../hooks/useDashboard';
-import { updateProfile, changePassword } from '../../../api/auth';
+import { updateProfile, changePassword, uploadAvatar, removeAvatar, resolveAvatarUrl } from '../../../api/auth';
 import { fetchMyCertificates, type Certificate } from '../../../api/learn';
 import { ink, inkSoft, rose, roseDeep, card, line, serif, sage, sageDeep, roseTint, sageTint, amber, amberTint, cream } from '../../../theme/brand';
+import { blobToBase64 } from '../../community/shared';
 import PrivacySections from '../../legal/PrivacySections';
 import CertificateModal from '../../certificates/CertificateModal';
 import PlacementTestModal from '../placement/PlacementTestModal';
+
+const MAX_AVATAR_BYTES = 150 * 1024;
 
 const LANGS = [
   { id: 'en', label: 'English' },
@@ -168,6 +173,8 @@ const ProfileModal = ({
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [savingAccount, setSavingAccount] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const [learningLanguage, setLearningLanguage] = useState('en');
   const [preferredLanguage, setPreferredLanguage] = useState('en');
@@ -214,6 +221,40 @@ const ProfileModal = ({
   const memberSince = user?.createdAt
     ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : null;
+
+  const handleAvatarPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > MAX_AVATAR_BYTES) {
+      toast({ title: 'That image is too large — keep it under 150KB.', status: 'error', duration: 2500, position: 'top' });
+      return;
+    }
+    try {
+      setAvatarBusy(true);
+      const base64 = await blobToBase64(file);
+      await uploadAvatar(base64, file.type);
+      await onUserUpdated?.();
+      toast({ title: 'Profile picture updated', status: 'success', duration: 2000, position: 'top' });
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not upload that image', status: 'error', duration: 2500, position: 'top' });
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    try {
+      setAvatarBusy(true);
+      await removeAvatar();
+      await onUserUpdated?.();
+      toast({ title: 'Profile picture removed', status: 'success', duration: 2000, position: 'top' });
+    } catch (err: any) {
+      toast({ title: err?.response?.data?.error || 'Could not remove your photo', status: 'error', duration: 2500, position: 'top' });
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
 
   const saveAccount = async () => {
     if (!token) return;
@@ -288,9 +329,14 @@ const ProfileModal = ({
               p={{ base: 4, md: 6 }}
             >
               <HStack spacing={3} mb={{ base: 4, md: 8 }}>
-                <Circle size="56px" bg={roseTint} color={roseDeep} fontWeight="700" fontSize="xl" flexShrink={0}>
-                  {displayName.charAt(0).toUpperCase()}
-                </Circle>
+                <Avatar
+                  size="md"
+                  name={displayName}
+                  src={resolveAvatarUrl(user?.avatarUrl)}
+                  bg={roseTint}
+                  color={roseDeep}
+                  flexShrink={0}
+                />
                 <Box minW={0}>
                   <Text fontWeight="700" fontSize="sm" isTruncated>
                     {displayName}
@@ -550,6 +596,46 @@ const ProfileModal = ({
                   <Text fontFamily={serif} fontWeight="700" fontSize="xl" color={ink}>
                     Account
                   </Text>
+
+                  <HStack spacing={4}>
+                    <Avatar size="xl" name={displayName} src={resolveAvatarUrl(user?.avatarUrl)} bg={roseTint} color={roseDeep} />
+                    <Stack spacing={2}>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        ref={avatarInputRef}
+                        onChange={handleAvatarPick}
+                        style={{ display: 'none' }}
+                      />
+                      <HStack spacing={2}>
+                        <Button
+                          size="sm"
+                          leftIcon={<Icon as={FiCamera} />}
+                          variant="outline"
+                          borderColor={line}
+                          color={ink}
+                          isLoading={avatarBusy}
+                          onClick={() => avatarInputRef.current?.click()}
+                        >
+                          {user?.avatarUrl ? 'Change photo' : 'Add photo'}
+                        </Button>
+                        {user?.avatarUrl && (
+                          <IconButton
+                            aria-label="Remove profile picture"
+                            icon={<Icon as={FiTrash2} />}
+                            size="sm"
+                            variant="ghost"
+                            color={roseDeep}
+                            isDisabled={avatarBusy}
+                            onClick={handleAvatarRemove}
+                          />
+                        )}
+                      </HStack>
+                      <Text fontSize="xs" color={inkSoft}>
+                        PNG, JPEG, WebP or GIF, up to 150KB.
+                      </Text>
+                    </Stack>
+                  </HStack>
 
                   <HStack spacing={4}>
                     <FormControl>

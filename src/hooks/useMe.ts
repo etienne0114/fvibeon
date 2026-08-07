@@ -7,6 +7,7 @@ export interface MeUser {
   email: string;
   firstName?: string | null;
   lastName?: string | null;
+  avatarUrl?: string | null;
   preferredLanguage?: string | null;
   learningLanguage?: string | null;
   proficiencyLevel?: string | null;

@@ -5,6 +5,15 @@ export interface AuthResponse {
   user: { id: string; email: string; username: string };
 }
 
+// avatarUrl comes back from the API relative to the API root (e.g. "/auth/avatar/<id>"), same
+// convention as messageMediaUrl in spaces.ts — resolve it against the same client base URL so
+// it works whether the frontend and API share an origin (dev) or don't (separate deployments).
+export function resolveAvatarUrl(avatarUrl?: string | null) {
+  if (!avatarUrl) return undefined;
+  const base = (client.defaults.baseURL || '/api').replace(/\/$/, '');
+  return `${base}${avatarUrl}`;
+}
+
 export interface RegisterResponse {
   success: boolean;
   requiresVerification: boolean;
@@ -58,6 +67,16 @@ export async function updateProfile(payload: ProfilePayload, token: string) {
 export async function changePassword(payload: { currentPassword: string; newPassword: string }) {
   const response = await client.post('/auth/change-password', payload);
   return response.data as { success: boolean };
+}
+
+export async function uploadAvatar(avatarBase64: string, mimeType: string) {
+  const response = await client.patch('/auth/avatar', { avatarBase64, mimeType });
+  return response.data as { success: boolean; user: AuthResponse['user'] & { avatarUrl: string | null } };
+}
+
+export async function removeAvatar() {
+  const response = await client.delete('/auth/avatar');
+  return response.data as { success: boolean; user: AuthResponse['user'] & { avatarUrl: string | null } };
 }
 
 export async function login(payload: { email: string; password: string }) {
