@@ -418,7 +418,7 @@ const CallPanel = ({
                     <TvFrame>{renderFeatured(featuredTile)}</TvFrame>
                   </Box>
 
-                  <Box position="relative" flex="1" minH={0} w={aisleWidth} mt={{ base: 3, md: 5 }}>
+                  <Box position="relative" flex="1" minH={0} w={aisleWidth} mt={0}>
                     <Box
                       position="absolute"
                       inset={0}
