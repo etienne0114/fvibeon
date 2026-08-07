@@ -42,6 +42,12 @@ const aisleClipPath = {
   sm: 'polygon(calc(50% - 140px) 0%, calc(50% + 140px) 0%, 100% 100%, 0% 100%)',
   md: 'polygon(calc(50% - 190px) 0%, calc(50% + 190px) 0%, 100% 100%, 0% 100%)',
 };
+// Fixed pixel width for the aisle backdrop and the bubble row beneath it — sized to the same
+// ratio as TvFrame's own width at each breakpoint. A percentage-of-container width looked fine
+// on narrow phones but went flat and let bubbles spill outside the spotlight entirely on wide
+// desktop screens, since the container (up to the full modal width) grew much faster than the
+// TV frame does. Pinning to a fixed multiple of the TV width keeps the same proportions everywhere.
+const aisleWidth = { base: '366px', sm: '540px', md: '720px' };
 
 /* Ticking "Ns left" label for the current speaker's turn — recomputed every second from
    the server-recorded start time, so it stays correct even if this tab was backgrounded. */
@@ -403,7 +409,7 @@ const CallPanel = ({
                   top={{ base: '14%', md: '16%' }}
                   left="50%"
                   transform="translateX(-50%)"
-                  w={{ base: '94%', sm: '90%', md: '85%' }}
+                  w={aisleWidth}
                   h={{ base: '86%', md: '84%' }}
                   zIndex={0}
                   sx={{
@@ -418,7 +424,7 @@ const CallPanel = ({
                   top={{ base: '14%', md: '16%' }}
                   left="50%"
                   transform="translateX(-50%)"
-                  w={{ base: '94%', sm: '90%', md: '85%' }}
+                  w={aisleWidth}
                   h={{ base: '86%', md: '84%' }}
                   zIndex={0}
                   opacity={0.5}
@@ -437,7 +443,7 @@ const CallPanel = ({
                       spacing={{ base: 3, md: 5 }}
                       flexWrap="wrap"
                       justify="flex-start"
-                      w={{ base: '92%', sm: '88%', md: '82%' }}
+                      w={aisleWidth}
                       pl={{ base: 2, md: 4 }}
                     >
                       {aisleTiles.map((t) => (
